@@ -1,8 +1,12 @@
 #include "engine.h"
-#include <iostream>
+#include <vulkan/vulkan_core.h>
 
 int main() {
 
-  std::cout << "Hello World" << std::endl;
+
+  VkDevice* device = VK_NULL_HANDLE;
+
+  fmt::println("Hello World");
+
   return 0;
 }
