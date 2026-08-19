@@ -11,6 +11,9 @@ set(PROJECT_SRC
     "src/VkBootstrap.h"
     "src/VkBootstrap.cpp"
     "src/VkBootstrapDispatch.h"
+    "src/utils.hpp"
+    "src/FrameResources.h"
+    "src/FrameResources.cpp"
 )
 
 find_package(Vulkan REQUIRED)
