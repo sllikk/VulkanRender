@@ -1,5 +1,6 @@
 #pragma once
 #include  "utils.hpp"
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 class Engine {
@@ -10,9 +11,12 @@ class Engine {
     uint32_t m_window_height = 0;
     bool m_window_is_close = false;
 
-    VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkDevice m_device = VK_NULL_HANDLE;
+    VkInstance m_instance = VK_NULL_HANDLE;
+    VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
+    VkQueue m_compute_queue = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
     VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
     VkCommandBuffer m_cmd_buffer = VK_NULL_HANDLE;
@@ -36,15 +40,17 @@ public:
 
   Engine(const uint32_t& width, const uint32_t& height, const std::string_view& title);
 
-  void init_vulkan();
-  void init_pipeline();
+    void init_window();
+    void init_vulkan();
+    void init_swap_chain();
+    void init_pipeline();
 
 public:
 
-  void init();
-  void update();
-  void render();
-  void cleanup();
+    void init();
+    void update();
+    void render();
+    void cleanup() const;
 
 
 

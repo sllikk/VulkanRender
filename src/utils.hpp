@@ -6,15 +6,13 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/trigonometric.hpp>
 
-#include <fmt/base.h>
 #include <vulkan/vulkan_core.h>
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vk_enum_string_helper.h>
 
 
-
-// stl
 
 #include <array>
 #include <deque>
@@ -24,6 +22,7 @@
 
 #include <memory>
 #include <functional>
+
 
 constexpr uint32_t DOUBLE_BUFFERING = 2;
 constexpr uint32_t TRIPLE_BUFFERING = 3;
@@ -47,6 +46,14 @@ struct DeletionQueue {
 
 
 };
+
+inline void THROW_IF_ERROR(const VkResult& result)
+{
+    if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error(string_VkResult(result));
+    }
+}
 
 struct Vertex {
 
