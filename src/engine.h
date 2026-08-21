@@ -16,18 +16,26 @@ class Engine {
     VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_compute_queue = VK_NULL_HANDLE;
+
     VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
-    VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
+    VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
     VkCommandBuffer m_cmd_buffer = VK_NULL_HANDLE;
     VkCommandPool m_cmd_pool = VK_NULL_HANDLE;
     VkRect2D m_scissor{};
     VkViewport m_viewport{};
 
+    VkFormat m_swapchain_format = VK_FORMAT_B8G8R8A8_UNORM;
+    std::vector<VkImage> m_swapchain_images;
+    std::vector<VkImageView> m_swapchain_images_image_views;
+
+
     VkFence m_fence = VK_NULL_HANDLE;
     VkSemaphore m_semaphore = VK_NULL_HANDLE;
 
     uint32_t m_current_frame_index = 0;
+    uint32_t m_queue_graphics_index = 0;
+    uint32_t m_queue_compute_index = 0;
 
 
 public:
@@ -42,8 +50,10 @@ public:
 
     void init_window();
     void init_vulkan();
-    void init_swap_chain();
-    void init_pipeline();
+    void init_commands();
+    void init_sync_objects();
+    void create_swapchain(const uint32_t width, const uint32_t& height);
+    void destroy_swapchain() const;
 
 public:
 

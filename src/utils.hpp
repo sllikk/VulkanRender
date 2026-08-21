@@ -84,3 +84,33 @@ struct RenderItem {
 
 
 };
+
+
+namespace VkUtils
+{
+    VkCommandPoolCreateInfo command_pool_create_info (uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags)
+    {
+        VkCommandPoolCreateInfo command_pool_create_info{};
+        command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        command_pool_create_info.flags = flags;
+        command_pool_create_info.queueFamilyIndex = queueFamilyIndex;
+        command_pool_create_info.pNext = nullptr;
+        return command_pool_create_info;
+    }
+
+    VkCommandBufferAllocateInfo command_buffer_allocate_info(VkCommandPool cmd_pool, const uint32_t count)
+    {
+        VkCommandBufferAllocateInfo command_buffer_allocate_info{};
+        command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        command_buffer_allocate_info.commandPool = cmd_pool;
+        command_buffer_allocate_info.commandBufferCount = count;
+        command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        command_buffer_allocate_info.pNext = nullptr;
+
+        return command_buffer_allocate_info;
+    }
+
+
+}
+
+
