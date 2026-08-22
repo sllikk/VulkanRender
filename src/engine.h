@@ -29,13 +29,13 @@ class Engine {
     std::vector<VkImage> m_swapchain_images;
     std::vector<VkImageView> m_swapchain_images_image_views;
 
-
     VkFence m_fence = VK_NULL_HANDLE;
-    VkSemaphore m_semaphore = VK_NULL_HANDLE;
+    VkSemaphore m_swapchain_semaphore = VK_NULL_HANDLE;
+    VkSemaphore m_render_semaphore = VK_NULL_HANDLE;
 
     uint32_t m_current_frame_index = 0;
-    uint32_t m_queue_graphics_index = 0;
-    uint32_t m_queue_compute_index = 0;
+    uint32_t m_queue_graphics_family= 0;
+    uint32_t m_queue_compute_family = 0;
 
 
 public:
@@ -52,8 +52,10 @@ public:
     void init_vulkan();
     void init_commands();
     void init_sync_objects();
+    void init_render_passes();
     void create_swapchain(const uint32_t width, const uint32_t& height);
     void destroy_swapchain() const;
+
 
 public:
 

@@ -73,6 +73,11 @@ void Engine::init_vulkan()
 
     VkPhysicalDeviceVulkan11Features features1{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features1.multiview = true;
+
+
+    VkPhysicalDeviceVulkan12Features features2{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    features2.timelineSemaphore = true;
+
     VkPhysicalDeviceVulkan13Features features3{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features3.synchronization2 = true;
 
@@ -107,8 +112,8 @@ void Engine::init_vulkan()
     auto graphics_queue_ret = dev_ret.value().get_queue(vkb::QueueType::graphics);
     auto compute_queue_ret = dev_ret.value().get_queue(vkb::QueueType::compute);
 
-    m_queue_graphics_index = dev_ret.value().get_queue_index(vkb::QueueType::graphics).value();
-    m_queue_compute_index = dev_ret.value().get_queue_index(vkb::QueueType::compute).value();
+    m_queue_graphics_family = dev_ret.value().get_queue_index(vkb::QueueType::graphics).value();
+    m_queue_compute_family = dev_ret.value().get_queue_index(vkb::QueueType::compute).value();
 
     m_instance = instance_ret.value();
     m_messenger = instance_ret.value().debug_messenger;
@@ -123,17 +128,30 @@ void Engine::init_vulkan()
 
 void Engine::init_commands()
 {
-    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_index, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     THROW_IF_ERROR(vkCreateCommandPool(m_device, &cmd_pool_create_info, nullptr, &m_cmd_pool));
 
-    const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_cmd_pool, 1);
+    const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
     THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_cmd_buffer));
+
 
 }
 
+
 void Engine::init_sync_objects()
 {
+    const auto& fence_create_info = VkUtils::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    THROW_IF_ERROR(vkCreateFence(m_device, &fence_create_info, nullptr, &m_fence));
 
+    const auto& semaphore_create_info = VkUtils::semaphore_create_info(0);
+    THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_swapchain_semaphore));
+    THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_render_semaphore));
+
+}
+
+
+void Engine::init_render_passes()
+{
 
 }
 
@@ -176,6 +194,8 @@ void Engine::init() {
     init_vulkan();
     create_swapchain(m_window_width, m_window_height);
     init_commands();
+    init_sync_objects();
+    init_render_passes();
 }
 
 
@@ -198,6 +218,15 @@ void Engine::render() {
 
 void Engine::cleanup() const
 {
+
+    vkDeviceWaitIdle(m_device);
+
+    vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
+    vkDestroySemaphore(m_device, m_swapchain_semaphore, nullptr);
+    vkDestroyFence(m_device, m_fence, nullptr);
+
+    vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
+
     destroy_swapchain();
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
@@ -212,12 +241,11 @@ void Engine::cleanup() const
 
 int main() {
 
-  auto* engine = new Engine(1280, 1024, "Engine");
-  engine->init();
-  engine->update();
-  engine->cleanup();
+  Engine engine = Engine(1280, 1024, "Engine");
+  engine.init();
+  engine.update();
+  engine.cleanup();
 
-  delete engine;
   return 0;
 }
 
