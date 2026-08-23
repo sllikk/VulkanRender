@@ -82,8 +82,8 @@ void Engine::init_vulkan()
     features3.synchronization2 = true;
 
     physical_device_selector.set_required_features_11(features1);
+    physical_device_selector.set_required_features_12(features2);
     physical_device_selector.set_required_features_13(features3);
-
 
     vkb::Result<vkb::PhysicalDevice> physical_device_selector_return = physical_device_selector.select();
 
@@ -152,6 +152,29 @@ void Engine::init_sync_objects()
 
 void Engine::init_render_passes()
 {
+    const auto& color_attachment = VkUtils::attachment_description(m_swapchain_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_CLEAR,
+        VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+
+    const auto& color_attachment_ref = VkUtils::attachment_reference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    const auto& subpass = VkUtils::subpass_description(0, VK_PIPELINE_BIND_POINT_GRAPHICS, nullptr, &color_attachment_ref, nullptr, 1, 0);
+    const auto& render_pass_info = VkUtils::render_pass_create_info(0, 1, 1, 0, &subpass, &color_attachment, nullptr);
+
+    THROW_IF_ERROR(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass));
+}
+
+
+void Engine::init_framebuffers()
+{
+    const uint32_t count = static_cast<uint32_t>(m_swapchain_images_image_views.size());
+    auto frame_buffer_create_info = VkUtils::framebuffer_create_info(0, nullptr, m_render_pass, 1, 1, m_window_height, m_window_width);
+
+    m_framebuffers = std::vector<VkFramebuffer>(count);
+    for (int i = 0; i < count; ++i)
+    {
+        frame_buffer_create_info.pAttachments = &m_swapchain_images_image_views[i];
+        THROW_IF_ERROR(vkCreateFramebuffer(m_device, &frame_buffer_create_info, nullptr, &m_framebuffers[i]));
+
+    }
 
 }
 
@@ -181,8 +204,11 @@ void Engine::destroy_swapchain() const
 {
     vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 
+    vkDestroyRenderPass(m_device, m_render_pass, nullptr);
+
     for (size_t i = 0; i < m_swapchain_images_image_views.size(); i++)
     {
+        vkDestroyFramebuffer(m_device, m_framebuffers[i], nullptr);
         vkDestroyImageView(m_device, m_swapchain_images_image_views[i], nullptr);
     }
 }
@@ -192,10 +218,12 @@ void Engine::init() {
 
     init_window();
     init_vulkan();
-    create_swapchain(m_window_width, m_window_height);
     init_commands();
     init_sync_objects();
+    create_swapchain(m_window_width, m_window_height);
     init_render_passes();
+    init_framebuffers();
+
 }
 
 
@@ -210,9 +238,11 @@ void Engine::update() {
 }
 
 
-void Engine::render() {
-
-
+void Engine::render()
+{
+    //wait until the GPU has finished rendering the last frame. Timeout of 1 second
+    THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_fence, true, UINT_FAST64_MAX));
+    THROW_IF_ERROR(vkResetFences(m_device, 1, &m_fence));
 }
 
 
@@ -221,13 +251,14 @@ void Engine::cleanup() const
 
     vkDeviceWaitIdle(m_device);
 
+    destroy_swapchain();
+
     vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
     vkDestroySemaphore(m_device, m_swapchain_semaphore, nullptr);
     vkDestroyFence(m_device, m_fence, nullptr);
 
     vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
 
-    destroy_swapchain();
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     vkb::destroy_debug_utils_messenger(m_instance, m_messenger, nullptr);

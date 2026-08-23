@@ -1,4 +1,5 @@
 #pragma once
+#define VMA_IMPLEMENTATION
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -25,7 +26,6 @@
 
 
 constexpr uint32_t DOUBLE_BUFFERING = 2;
-constexpr uint32_t TRIPLE_BUFFERING = 3;
 
 
 struct DeletionQueue {
@@ -40,7 +40,7 @@ struct DeletionQueue {
     queue.clear();
   }
 
-  void add_to_queue(std::function<void()>&& function) {
+  void add_to_queue(const std::function<void()>&& function) {
       queue.push_back(function);
   }
 
@@ -57,8 +57,9 @@ inline void THROW_IF_ERROR(const VkResult& result)
 
 struct Vertex {
 
-  glm::vec3 position;
-  glm::vec4 color;
+    glm::vec3 position;
+    glm::vec4 color;
+
 
 };
 
@@ -68,20 +69,19 @@ struct Vertex {
 
 struct GpuBuffer {
 
-  VkBuffer buffer = nullptr;
-  VmaAllocation allocation = nullptr;
+    VkBuffer buffer = nullptr;
+    VmaAllocation allocation = nullptr;
 
 };
 
 
 struct RenderItem {
 
-  uint32_t vertices_count = 0;
-  uint32_t vertices_start = 0;
+    uint32_t vertices_count = 0;
+    uint32_t vertices_start = 0;
 
-  std::unique_ptr<GpuBuffer> vertex_buffer;
-  std::unique_ptr<GpuBuffer> index_buffer;
-
+    std::unique_ptr<GpuBuffer> vertex_buffer;
+    std::unique_ptr<GpuBuffer> index_buffer;
 
 };
 
@@ -109,6 +109,18 @@ namespace VkUtils
 
         return command_buffer_allocate_info;
     }
+
+    VkCommandBufferBeginInfo command_buffer_begin_info(const VkCommandBufferUsageFlags flags, const VkCommandBufferInheritanceInfo* inheritance_info)
+    {
+        VkCommandBufferBeginInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        info.flags = flags;
+        info.pInheritanceInfo = inheritance_info;
+        info.pNext = nullptr;
+
+        return info;
+    }
+
 
     VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags)
     {
@@ -200,7 +212,7 @@ namespace VkUtils
         return info;
     }
 
-    VkFramebufferCreateInfo framebuffer_create_info(VkFramebufferCreateFlags flags, const VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
+    VkFramebufferCreateInfo framebuffer_create_info(const VkFramebufferCreateFlags flags, VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
         const uint32_t& height, const uint32_t& width)
     {
         VkFramebufferCreateInfo info = {};
@@ -211,6 +223,7 @@ namespace VkUtils
         info.width = width;
         info.height = height;
         info.renderPass = renderPass;
+        info.layers = layoutCount;
         info.pNext = nullptr;
         return info;
     }
@@ -242,6 +255,20 @@ namespace VkUtils
         info.pWaitDstStageMask = pWaitDstStageMask;
         info.pNext = nullptr;
         return info;
+    }
+
+    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, VkResult* pResults, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
+    {
+        VkPresentInfoKHR present_info_khr = {};
+        present_info_khr.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        present_info_khr.pImageIndices = pImageIndices;
+        present_info_khr.pResults = pResults;
+        present_info_khr.pSwapchains = pSwapchains;
+        present_info_khr.pWaitSemaphores = pWaitSemaphores;
+        present_info_khr.waitSemaphoreCount = waitSemaphoreCount;
+        present_info_khr.swapchainCount = swapchainCount;
+        present_info_khr.pNext = nullptr;
+        return  present_info_khr;
     }
 
 }

@@ -26,8 +26,8 @@ class Engine {
     VkViewport m_viewport{};
 
     VkFormat m_swapchain_format = VK_FORMAT_B8G8R8A8_UNORM;
-    std::vector<VkImage> m_swapchain_images;
-    std::vector<VkImageView> m_swapchain_images_image_views;
+    std::vector<VkImage> m_swapchain_images{};
+    std::vector<VkImageView> m_swapchain_images_image_views{};
 
     VkFence m_fence = VK_NULL_HANDLE;
     VkSemaphore m_swapchain_semaphore = VK_NULL_HANDLE;
@@ -37,6 +37,8 @@ class Engine {
     uint32_t m_queue_graphics_family= 0;
     uint32_t m_queue_compute_family = 0;
 
+    VkRenderPass m_render_pass = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> m_framebuffers{};
 
 public:
 
@@ -53,6 +55,7 @@ public:
     void init_commands();
     void init_sync_objects();
     void init_render_passes();
+    void init_framebuffers();
     void create_swapchain(const uint32_t width, const uint32_t& height);
     void destroy_swapchain() const;
 
