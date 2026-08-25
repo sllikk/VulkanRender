@@ -165,7 +165,7 @@ void Engine::init_render_passes()
 
 void Engine::init_framebuffers()
 {
-    const uint32_t count = static_cast<uint32_t>(m_swapchain_images_image_views.size());
+    const uint32_t count = static_cast<const uint32_t>(m_swapchain_images_image_views.size());
     auto frame_buffer_create_info = VkUtils::framebuffer_create_info(0, nullptr, m_render_pass, 1, 1, m_window_height, m_window_width);
 
     m_framebuffers = std::vector<VkFramebuffer>(count);
@@ -179,7 +179,7 @@ void Engine::init_framebuffers()
 }
 
 
-void Engine::create_swapchain(const uint32_t width, const uint32_t& height)
+void Engine::create_swapchain(const uint32_t width, const uint32_t height)
 {
     vkb::SwapchainBuilder swapchain_builder {m_gpu, m_device, m_surface};
     VkSurfaceFormatKHR const& surface_format_khr{.format = m_swapchain_format, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
@@ -199,12 +199,27 @@ void Engine::create_swapchain(const uint32_t width, const uint32_t& height)
 
 }
 
+void Engine::resize()
+{
+    vkDeviceWaitIdle(m_device);
+
+    destroy_swapchain();
+
+    int h, w;
+    glfwGetWindowSize(m_window, &w, &h);
+    m_window_width = w;
+    m_window_height = h;
+
+    create_swapchain(m_window_width, m_window_height);
+    init_framebuffers();
+    isResized = false;
+
+}
+
 
 void Engine::destroy_swapchain() const
 {
     vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
-
-    vkDestroyRenderPass(m_device, m_render_pass, nullptr);
 
     for (size_t i = 0; i < m_swapchain_images_image_views.size(); i++)
     {
@@ -233,7 +248,14 @@ void Engine::update() {
     {
         glfwPollEvents();
 
+        if (isResized == true)
+        {
+            resize();
+        }
+
         render();
+
+
     }
 }
 
@@ -241,8 +263,48 @@ void Engine::update() {
 void Engine::render()
 {
     //wait until the GPU has finished rendering the last frame. Timeout of 1 second
-    THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_fence, true, UINT_FAST64_MAX));
+    THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_fence, true, UINT64_MAX));
     THROW_IF_ERROR(vkResetFences(m_device, 1, &m_fence));
+
+    const VkResult frame_res = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_swapchain_semaphore, m_fence, &swapchainIndex);
+    if (frame_res ==  VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        isResized = true;
+        return;
+    }
+
+    THROW_IF_ERROR( vkResetCommandBuffer(m_cmd_buffer, 0));
+
+    const VkCommandBuffer& cmd = m_cmd_buffer;
+
+    const auto& cmd_begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
+    THROW_IF_ERROR(vkBeginCommandBuffer(cmd, &cmd_begin_info));
+
+    VkClearValue clear_value{};
+    clear_value.color = {{0.5f, 0.5, 0.5f, 0.5f} };
+
+    m_scissor.extent.width = m_window_width;
+    m_scissor.extent.height = m_window_height;
+    m_scissor.offset.x = 0;
+    m_scissor.offset.y = 0;
+
+    const VkRenderPassBeginInfo pass_begin = VkUtils::render_pass_begin_info(m_render_pass, m_framebuffers[swapchainIndex], 1, &clear_value, m_scissor);
+    vkCmdBeginRenderPass(cmd, &pass_begin, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdEndRenderPass(cmd);
+    vkEndCommandBuffer(cmd);
+
+    const auto& submit_info = VkUtils::submit_info(&cmd, &m_render_semaphore, &m_swapchain_semaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1, 1, 1 );
+    THROW_IF_ERROR(vkQueueSubmit(m_graphics_queue, 1, &submit_info, nullptr));
+
+    const auto& present_info = VkUtils::present_info_khr(&swapchainIndex, &m_swapchain, &m_render_semaphore, nullptr, 1, 1);
+    const VkResult present_res = vkQueuePresentKHR(m_graphics_queue, &present_info);
+
+    if (present_res == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        isResized = true;
+    }
+
 }
 
 

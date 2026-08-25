@@ -21,8 +21,9 @@
 #include <stack>
 #include <vector>
 
-#include <memory>
 #include <functional>
+#include <iostream>
+#include <memory>
 
 
 constexpr uint32_t DOUBLE_BUFFERING = 2;
@@ -51,6 +52,7 @@ inline void THROW_IF_ERROR(const VkResult& result)
 {
     if (result != VK_SUCCESS)
     {
+        std::cerr << string_VkResult(result) << std::endl;
         throw std::runtime_error(string_VkResult(result));
     }
 }
@@ -212,7 +214,7 @@ namespace VkUtils
         return info;
     }
 
-    VkFramebufferCreateInfo framebuffer_create_info(const VkFramebufferCreateFlags flags, VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
+    VkFramebufferCreateInfo framebuffer_create_info(const VkFramebufferCreateFlags flags, const VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
         const uint32_t& height, const uint32_t& width)
     {
         VkFramebufferCreateInfo info = {};
@@ -241,7 +243,7 @@ namespace VkUtils
         return info;
     }
 
-    VkSubmitInfo submit_info(const VkCommandBuffer* pCommandBuffers, const VkSemaphore* pSignalSemaphores, const VkSemaphore* pWaitSemaphores, const VkPipelineStageFlags* pWaitDstStageMask,
+    VkSubmitInfo submit_info(const VkCommandBuffer* pCommandBuffers, const VkSemaphore* pSignalSemaphores, const VkSemaphore* pWaitSemaphores, const VkPipelineStageFlags pWaitDstStageMask,
         const uint32_t& cmdCount, const uint32_t& signalSemaphoreCount, const uint32_t& waitSemaphoreCount)
     {
         VkSubmitInfo info = {};
@@ -252,7 +254,7 @@ namespace VkUtils
         info.pWaitSemaphores = pWaitSemaphores;
         info.signalSemaphoreCount = signalSemaphoreCount;
         info.waitSemaphoreCount = waitSemaphoreCount;
-        info.pWaitDstStageMask = pWaitDstStageMask;
+        info.pWaitDstStageMask = &pWaitDstStageMask;
         info.pNext = nullptr;
         return info;
     }

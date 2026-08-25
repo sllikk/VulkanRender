@@ -37,8 +37,11 @@ class Engine {
     uint32_t m_queue_graphics_family= 0;
     uint32_t m_queue_compute_family = 0;
 
+    uint32_t swapchainIndex = 0;
+
     VkRenderPass m_render_pass = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> m_framebuffers{};
+    bool isResized = false;
 
 public:
 
@@ -56,7 +59,8 @@ public:
     void init_sync_objects();
     void init_render_passes();
     void init_framebuffers();
-    void create_swapchain(const uint32_t width, const uint32_t& height);
+    void create_swapchain(const uint32_t width, const uint32_t height);
+    void resize();
     void destroy_swapchain() const;
 
 
