@@ -313,6 +313,7 @@ void Engine::cleanup() const
 
     vkDeviceWaitIdle(m_device);
 
+    vkDestroyRenderPass(m_device, m_render_pass, nullptr);
     destroy_swapchain();
 
     vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
