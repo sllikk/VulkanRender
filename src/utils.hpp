@@ -1,5 +1,4 @@
 #pragma once
-#define VMA_IMPLEMENTATION
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -8,7 +7,6 @@
 #include <glm/trigonometric.hpp>
 
 #include <vulkan/vulkan_core.h>
-#include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
@@ -71,7 +69,6 @@ struct Vertex {
 struct GpuBuffer {
 
     VkBuffer buffer = nullptr;
-    VmaAllocation allocation = nullptr;
 
 };
 
