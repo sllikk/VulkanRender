@@ -3,7 +3,7 @@
 #include <iostream>
 
 
-Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view& title)
+Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view title)
     : m_window_title(title),  m_window_width(width), m_window_height(height)
 {
 
@@ -20,7 +20,7 @@ void Engine::init_window()
 
     if (!glfwVulkanSupported())
     {
-        throw std::runtime_error("glfw is not init");
+        throw std::runtime_error("glfw is not supporting VULKAN");
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -76,7 +76,7 @@ void Engine::init_vulkan()
 
 
     VkPhysicalDeviceVulkan12Features features2{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    features2.timelineSemaphore = true;
+    //features2.timelineSemaphore = true;
 
     VkPhysicalDeviceVulkan13Features features3{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features3.synchronization2 = true;
@@ -128,11 +128,15 @@ void Engine::init_vulkan()
 
 void Engine::init_commands()
 {
-    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    THROW_IF_ERROR(vkCreateCommandPool(m_device, &cmd_pool_create_info, nullptr, &m_cmd_pool));
 
-    const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
-    THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_cmd_buffer));
+    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+
+    for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
+    {
+        THROW_IF_ERROR(vkCreateCommandPool(m_device, &cmd_pool_create_info, nullptr, &m_frame_contexts[i].command_pool));
+        const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_frame_contexts[i].command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_frame_contexts[i].command_buffer));
+    }
 
 
 }
@@ -141,40 +145,17 @@ void Engine::init_commands()
 void Engine::init_sync_objects()
 {
     const auto& fence_create_info = VkUtils::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
-    THROW_IF_ERROR(vkCreateFence(m_device, &fence_create_info, nullptr, &m_fence));
-
     const auto& semaphore_create_info = VkUtils::semaphore_create_info(0);
-    THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_swapchain_semaphore));
-    THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_render_semaphore));
 
-}
-
-
-void Engine::init_render_passes()
-{
-    const auto& color_attachment = VkUtils::attachment_description(m_swapchain_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_CLEAR,
-        VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
-
-    const auto& color_attachment_ref = VkUtils::attachment_reference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    const auto& subpass = VkUtils::subpass_description(0, VK_PIPELINE_BIND_POINT_GRAPHICS, nullptr, &color_attachment_ref, nullptr, 1, 0);
-    const auto& render_pass_info = VkUtils::render_pass_create_info(0, 1, 1, 0, &subpass, &color_attachment, nullptr);
-
-    THROW_IF_ERROR(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass));
-}
-
-
-void Engine::init_framebuffers()
-{
-    const uint32_t count = static_cast<const uint32_t>(m_swapchain_images_image_views.size());
-    auto frame_buffer_create_info = VkUtils::framebuffer_create_info(0, nullptr, m_render_pass, 1, 1, m_window_height, m_window_width);
-
-    m_framebuffers = std::vector<VkFramebuffer>(count);
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
     {
-        frame_buffer_create_info.pAttachments = &m_swapchain_images_image_views[i];
-        THROW_IF_ERROR(vkCreateFramebuffer(m_device, &frame_buffer_create_info, nullptr, &m_framebuffers[i]));
+        THROW_IF_ERROR(vkCreateFence(m_device, &fence_create_info, nullptr, &m_frame_contexts[i].fence));
+
+        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i].swapchain_semaphore));
+        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i].render_semaphore));
 
     }
+
 
 }
 
@@ -199,6 +180,7 @@ void Engine::create_swapchain(const uint32_t width, const uint32_t height)
 
 }
 
+
 void Engine::resize()
 {
     vkDeviceWaitIdle(m_device);
@@ -210,8 +192,13 @@ void Engine::resize()
     m_window_width = w;
     m_window_height = h;
 
+    m_scissor.extent.width = m_window_width;
+    m_scissor.extent.height = m_window_height;
+    m_scissor.offset.x = 0;
+    m_scissor.offset.y = 0;
+
+
     create_swapchain(m_window_width, m_window_height);
-    init_framebuffers();
     isResized = false;
 
 }
@@ -223,7 +210,6 @@ void Engine::destroy_swapchain() const
 
     for (size_t i = 0; i < m_swapchain_images_image_views.size(); i++)
     {
-        vkDestroyFramebuffer(m_device, m_framebuffers[i], nullptr);
         vkDestroyImageView(m_device, m_swapchain_images_image_views[i], nullptr);
     }
 }
@@ -236,8 +222,6 @@ void Engine::init() {
     init_commands();
     init_sync_objects();
     create_swapchain(m_window_width, m_window_height);
-    init_render_passes();
-    init_framebuffers();
 
 }
 
@@ -263,64 +247,103 @@ void Engine::update() {
 void Engine::render()
 {
     //wait until the GPU has finished rendering the last frame. Timeout of 1 second
-    THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_fence, true, UINT64_MAX));
-    THROW_IF_ERROR(vkResetFences(m_device, 1, &m_fence));
+    THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_get_frame_context_index().fence, true, UINT64_MAX));
+    THROW_IF_ERROR(vkResetFences(m_device, 1, &m_get_frame_context_index().fence));
 
-    const VkResult frame_res = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_swapchain_semaphore, m_fence, &swapchainIndex);
+    const VkResult frame_res = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, m_get_frame_context_index().swapchain_semaphore, nullptr, &m_swapchainIndex);
     if (frame_res ==  VK_ERROR_OUT_OF_DATE_KHR)
     {
         isResized = true;
         return;
     }
 
-    THROW_IF_ERROR( vkResetCommandBuffer(m_cmd_buffer, 0));
+    const VkCommandBuffer& cmd = m_get_frame_context_index().command_buffer;
 
-    const VkCommandBuffer& cmd = m_cmd_buffer;
+    THROW_IF_ERROR( vkResetCommandBuffer(cmd, 0));
 
     const auto& cmd_begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
     THROW_IF_ERROR(vkBeginCommandBuffer(cmd, &cmd_begin_info));
 
-    VkClearValue clear_value{};
-    clear_value.color = {{0.5f, 0.5, 0.5f, 0.5f} };
+    VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    m_scissor.extent.width = m_window_width;
-    m_scissor.extent.height = m_window_height;
-    m_scissor.offset.x = 0;
-    m_scissor.offset.y = 0;
+    VkClearColorValue clear_value{};
+    clear_value  = {{0.5f, 0.5, 0.5f, 0.5f} };
 
-    const VkRenderPassBeginInfo pass_begin = VkUtils::render_pass_begin_info(m_render_pass, m_framebuffers[swapchainIndex], 1, &clear_value, m_scissor);
-    vkCmdBeginRenderPass(cmd, &pass_begin, VK_SUBPASS_CONTENTS_INLINE);
+    const VkImageSubresourceRange clearRange = VkUtils::subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCmdClearColorImage(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_GENERAL, &clear_value, 1, &clearRange);
 
-    vkCmdEndRenderPass(cmd);
-    vkEndCommandBuffer(cmd);
+    VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    const auto& submit_info = VkUtils::submit_info(&cmd, &m_render_semaphore, &m_swapchain_semaphore, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 1, 1, 1 );
-    THROW_IF_ERROR(vkQueueSubmit(m_graphics_queue, 1, &submit_info, nullptr));
+    THROW_IF_ERROR(vkEndCommandBuffer(cmd));
 
-    const auto& present_info = VkUtils::present_info_khr(&swapchainIndex, &m_swapchain, &m_render_semaphore, nullptr, 1, 1);
-    const VkResult present_res = vkQueuePresentKHR(m_graphics_queue, &present_info);
+    // FIX THIS SHIT WITH SEMAPHORES!!!
+
+    VkCommandBufferSubmitInfo cmd_submit_info{};
+    cmd_submit_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmd_submit_info.pNext = nullptr;
+    cmd_submit_info.commandBuffer = cmd;
+    cmd_submit_info.deviceMask = 0;
+
+    VkSemaphoreSubmitInfo semaphore_submit_info_wait = {};
+    semaphore_submit_info_wait.sType =  VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    semaphore_submit_info_wait.pNext = nullptr;
+    semaphore_submit_info_wait.deviceIndex = 0;
+    semaphore_submit_info_wait.semaphore = m_get_frame_context_index().swapchain_semaphore;
+    semaphore_submit_info_wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+    semaphore_submit_info_wait.value = 0;
+
+    VkSemaphoreSubmitInfo semaphore_submit_info_signal = {};
+    semaphore_submit_info_signal.sType =  VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    semaphore_submit_info_signal.pNext = nullptr;
+    semaphore_submit_info_signal.deviceIndex = 0;
+    semaphore_submit_info_signal.semaphore = m_get_frame_context_index().render_semaphore;
+    semaphore_submit_info_signal.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+    semaphore_submit_info_signal.value = 0;
+
+
+    VkSubmitInfo2 submit_info2 = {};
+    submit_info2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit_info2.pNext = nullptr;
+    submit_info2.commandBufferInfoCount = 1;
+    submit_info2.pCommandBufferInfos = &cmd_submit_info;
+    submit_info2.signalSemaphoreInfoCount = 1;
+    submit_info2.pSignalSemaphoreInfos = &semaphore_submit_info_signal;
+    submit_info2.waitSemaphoreInfoCount = 1;
+    submit_info2.pWaitSemaphoreInfos = &semaphore_submit_info_wait;
+
+    THROW_IF_ERROR(vkQueueSubmit2(m_graphics_queue, 1, &submit_info2, m_get_frame_context_index().fence));
+
+    VkPresentInfoKHR present_info = {};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.pNext = nullptr;
+    present_info.pImageIndices = &m_swapchainIndex;
+    present_info.pSwapchains = &m_swapchain;
+    present_info.swapchainCount = 1;
+    present_info.pWaitSemaphores = &m_get_frame_context_index().render_semaphore;
+    present_info.waitSemaphoreCount = 1;
+
+    VkResult present_res = vkQueuePresentKHR(m_graphics_queue, &present_info);
 
     if (present_res == VK_ERROR_OUT_OF_DATE_KHR)
     {
         isResized = true;
     }
 
+    m_frame_number++;
 }
 
 
 void Engine::cleanup() const
 {
-
     vkDeviceWaitIdle(m_device);
 
-    vkDestroyRenderPass(m_device, m_render_pass, nullptr);
     destroy_swapchain();
 
-    vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
-    vkDestroySemaphore(m_device, m_swapchain_semaphore, nullptr);
-    vkDestroyFence(m_device, m_fence, nullptr);
+  //  vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
+  //  vkDestroySemaphore(m_device, m_swapchain_semaphore, nullptr);
+  //  vkDestroyFence(m_device, m_fence, nullptr);
 
-    vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
+    //vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
 
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);

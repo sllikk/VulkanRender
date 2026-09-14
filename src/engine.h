@@ -2,6 +2,7 @@
 #include  "utils.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include "FrameResources.h"
 
 class Engine {
 
@@ -15,13 +16,11 @@ class Engine {
     VkInstance m_instance = VK_NULL_HANDLE;
     VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
-    VkQueue m_compute_queue = VK_NULL_HANDLE;
+    VkQueue m_compute_queue = VK_NULL_HANDLE; 
 
     VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
     VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
-    VkCommandBuffer m_cmd_buffer = VK_NULL_HANDLE;
-    VkCommandPool m_cmd_pool = VK_NULL_HANDLE;
     VkRect2D m_scissor{};
     VkViewport m_viewport{};
 
@@ -29,18 +28,16 @@ class Engine {
     std::vector<VkImage> m_swapchain_images{};
     std::vector<VkImageView> m_swapchain_images_image_views{};
 
-    VkFence m_fence = VK_NULL_HANDLE;
-    VkSemaphore m_swapchain_semaphore = VK_NULL_HANDLE;
-    VkSemaphore m_render_semaphore = VK_NULL_HANDLE;
-
     uint32_t m_current_frame_index = 0;
     uint32_t m_queue_graphics_family= 0;
     uint32_t m_queue_compute_family = 0;
 
-    uint32_t swapchainIndex = 0;
+    uint32_t m_swapchainIndex = 0;
+    uint32_t m_frame_number = 0;
 
-    VkRenderPass m_render_pass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> m_framebuffers{};
+    FrameContext m_frame_contexts[FRAME_IN_FLIGHTS]{};
+    FrameContext& m_get_frame_context_index() { return m_frame_contexts[m_frame_number % FRAME_IN_FLIGHTS]; }
+
     bool isResized = false;
 
 public:
@@ -51,17 +48,16 @@ public:
 
 public:
 
-  Engine(const uint32_t& width, const uint32_t& height, const std::string_view& title);
+  Engine(const uint32_t& width, const uint32_t& height, const std::string_view title);
 
     void init_window();
     void init_vulkan();
     void init_commands();
     void init_sync_objects();
-    void init_render_passes();
-    void init_framebuffers();
     void create_swapchain(const uint32_t width, const uint32_t height);
     void resize();
     void destroy_swapchain() const;
+
 
 
 public:

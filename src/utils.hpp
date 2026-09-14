@@ -23,7 +23,7 @@
 #include <memory>
 
 
-constexpr uint32_t DOUBLE_BUFFERING = 2;
+constexpr uint32_t FRAME_IN_FLIGHTS = 3;
 
 
 struct DeletionQueue {
@@ -239,35 +239,107 @@ namespace VkUtils
         return info;
     }
 
-    VkSubmitInfo submit_info(const VkCommandBuffer* pCommandBuffers, const VkSemaphore* pSignalSemaphores, const VkSemaphore* pWaitSemaphores, const VkPipelineStageFlags pWaitDstStageMask,
-        const uint32_t& cmdCount, const uint32_t& signalSemaphoreCount, const uint32_t& waitSemaphoreCount)
+    VkCommandBufferSubmitInfo command_buffer_submit(const VkCommandBuffer cmd)
     {
-        VkSubmitInfo info = {};
-        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        info.commandBufferCount = cmdCount;
-        info.pCommandBuffers = pCommandBuffers;
-        info.pSignalSemaphores = pSignalSemaphores;
-        info.pWaitSemaphores = pWaitSemaphores;
-        info.signalSemaphoreCount = signalSemaphoreCount;
-        info.waitSemaphoreCount = waitSemaphoreCount;
-        info.pWaitDstStageMask = &pWaitDstStageMask;
+        VkCommandBufferSubmitInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         info.pNext = nullptr;
+        info.commandBuffer = cmd;
+        info.deviceMask = 0;
+
         return info;
     }
 
-    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, VkResult* pResults, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
+    VkSemaphoreSubmitInfo semaphore_submit_info(const VkSemaphore semaphore, const VkPipelineStageFlags2 flags)
+    {
+        VkSemaphoreSubmitInfo info{};
+        info.pNext = nullptr;
+        info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        info.semaphore = semaphore;
+        info.stageMask = flags;
+        info.deviceIndex = 0;
+        info.value = 1;
+        return info;
+    }
+
+    VkSubmitInfo2 submit_info2(const VkCommandBufferSubmitInfo* pCmdSubmit, const uint32_t cmdSubmitCount, const VkSubmitFlags flags, const VkSemaphoreSubmitInfo* pWaitSemaphores, const VkSemaphoreSubmitInfo* pSignalSemaphores)
+    {
+        VkSubmitInfo2 info{};
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        info.pNext = nullptr;
+        info.pCommandBufferInfos = pCmdSubmit;
+        info.pSignalSemaphoreInfos = pSignalSemaphores;
+        info.pWaitSemaphoreInfos = pWaitSemaphores;
+        info.signalSemaphoreInfoCount = 1;
+        info.waitSemaphoreInfoCount = 1;
+        info.commandBufferInfoCount = 1;
+        info.flags = flags;
+        return info;
+    }
+
+    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
     {
         VkPresentInfoKHR present_info_khr = {};
         present_info_khr.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         present_info_khr.pImageIndices = pImageIndices;
-        present_info_khr.pResults = pResults;
         present_info_khr.pSwapchains = pSwapchains;
+        present_info_khr.swapchainCount = swapchainCount;
         present_info_khr.pWaitSemaphores = pWaitSemaphores;
         present_info_khr.waitSemaphoreCount = waitSemaphoreCount;
-        present_info_khr.swapchainCount = swapchainCount;
         present_info_khr.pNext = nullptr;
         return  present_info_khr;
     }
+
+    VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
+    {
+        VkImageSubresourceRange subresource_range = {};
+        subresource_range.aspectMask = aspect_flags;
+        subresource_range.baseMipLevel = 0;
+        subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
+        subresource_range.baseArrayLayer = 0;
+        subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+        return subresource_range;
+    }
+
+    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
+    {
+        VkImageMemoryBarrier2 image_memory_barrier = {};
+        image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+
+        image_memory_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        image_memory_barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        image_memory_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+
+        image_memory_barrier.newLayout = newLayout;
+        image_memory_barrier.oldLayout = currentLayout;
+
+        VkImageAspectFlags aspect_flags = {};
+
+        if (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+        {
+            aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else
+        {
+            aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
+        image_memory_barrier.subresourceRange = subresource_range(aspect_flags);
+        image_memory_barrier.image = image;
+        image_memory_barrier.pNext = nullptr;
+
+        VkDependencyInfo dependency_info = {};
+        dependency_info.pNext = nullptr;
+        dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+
+        dependency_info.imageMemoryBarrierCount = 1;
+        dependency_info.pImageMemoryBarriers = &image_memory_barrier;
+
+        vkCmdPipelineBarrier2(cmd, &dependency_info);
+    }
+
 
 }
 
