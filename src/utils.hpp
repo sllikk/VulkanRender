@@ -16,6 +16,7 @@
 
 #include <array>
 #include <deque>
+#include <fstream>
 #include <queue>
 #include <stack>
 #include <vector>
@@ -346,9 +347,24 @@ namespace VkUtils
     }
 
 
-    void load_shaders(std::string_view shader_path)
+    static std::vector<char> load_shaders(const std::string& shader_path)
     {
-        
+        std::ifstream file(shader_path, std::ios::ate | std::ios::binary);
+
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open file!");
+        }
+
+        size_t fileSize = (size_t) file.tellg();
+        std::vector<char> buffer(fileSize);
+
+        file.seekg(0);
+        file.read(buffer.data(), fileSize);
+
+        file.close();
+
+        return buffer;
+
 
     }
 

@@ -40,6 +40,9 @@ class Engine {
 
     DeletionQueue m_main_deletion_queue{};
     VmaAllocator m_vma_allocator = VK_NULL_HANDLE;
+    VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
+    VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
+
 
     bool isResized = false;
 
