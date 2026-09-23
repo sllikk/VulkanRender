@@ -7,7 +7,7 @@ Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_
     : m_window_title(title),  m_window_width(width), m_window_height(height)
 {
 
-
+    m_triangle_item = std::make_unique<RenderItem>();
 
 }
 
@@ -71,12 +71,11 @@ void Engine::init_vulkan()
     VkPhysicalDeviceFeatures required_features{};
     required_features.multiViewport = true;
 
-    VkPhysicalDeviceVulkan11Features features1{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDeviceVulkan11Features features1{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     features1.multiview = true;
 
-
     VkPhysicalDeviceVulkan12Features features2{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    //features2.timelineSemaphore = true;
+    features2.timelineSemaphore = true;
 
     VkPhysicalDeviceVulkan13Features features3{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features3.synchronization2 = true;
@@ -121,6 +120,15 @@ void Engine::init_vulkan()
     m_device = dev_ret.value();
     m_graphics_queue = graphics_queue_ret.value();
     m_compute_queue = graphics_queue_ret.value();
+
+    // Init vma
+    VmaAllocatorCreateInfo vma_allocator_create_info{};
+    vma_allocator_create_info.instance = m_instance;
+    vma_allocator_create_info.device = m_device;
+    vma_allocator_create_info.physicalDevice = m_gpu;
+    vma_allocator_create_info.vulkanApiVersion = VK_API_VERSION_1_3;
+
+    THROW_IF_ERROR(vmaCreateAllocator(&vma_allocator_create_info, &m_vma_allocator));
 
 
 }
@@ -215,6 +223,31 @@ void Engine::destroy_swapchain() const
 }
 
 
+void Engine::init_vertex_buffer()
+{
+    std::vector<Vertex> vertices = {
+        {glm::vec3(0.0f, -0.5f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, 0.0f)},
+        {glm::vec3(-0.5f, 0.5f, 0.0f)},
+    };
+
+    uint32_t size = static_cast<uint32_t>(vertices.size() * sizeof(Vertex));
+
+    VkBufferCreateInfo vertex_buffer_create_info{};
+    vertex_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vertex_buffer_create_info.pNext = nullptr;
+    vertex_buffer_create_info.size = size;
+
+    VmaAllocationCreateInfo allocation_create_info{};
+    VmaAllocationInfo allocation_info;
+
+    // FIGURE OUT SHIT WITH buffers
+
+
+
+}
+
+
 void Engine::init() {
 
     init_window();
@@ -246,7 +279,7 @@ void Engine::update() {
 
 void Engine::render()
 {
-    //wait until the GPU has finished rendering the last frame. Timeout of 1 second
+    //wait until the GPU has finished rendering the last frame.
     THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_get_frame_context_index().fence, true, UINT64_MAX));
     THROW_IF_ERROR(vkResetFences(m_device, 1, &m_get_frame_context_index().fence));
 
@@ -275,8 +308,6 @@ void Engine::render()
     VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     THROW_IF_ERROR(vkEndCommandBuffer(cmd));
-
-    // FIX THIS SHIT WITH SEMAPHORES!!!
 
     VkCommandBufferSubmitInfo cmd_submit_info{};
     cmd_submit_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -337,14 +368,19 @@ void Engine::cleanup() const
 {
     vkDeviceWaitIdle(m_device);
 
+    for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
+    {
+        vkDestroyCommandPool(m_device, m_frame_contexts[i].command_pool, nullptr);
+
+        vkDestroyFence(m_device, m_frame_contexts[i].fence, nullptr);
+        vkDestroySemaphore(m_device, m_frame_contexts[i].swapchain_semaphore, nullptr);
+        vkDestroySemaphore(m_device, m_frame_contexts[i].render_semaphore, nullptr);
+    }
+
+
     destroy_swapchain();
 
-  //  vkDestroySemaphore(m_device, m_render_semaphore, nullptr);
-  //  vkDestroySemaphore(m_device, m_swapchain_semaphore, nullptr);
-  //  vkDestroyFence(m_device, m_fence, nullptr);
-
-    //vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
-
+    vmaDestroyAllocator(m_vma_allocator);
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     vkb::destroy_debug_utils_messenger(m_instance, m_messenger, nullptr);

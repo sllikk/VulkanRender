@@ -10,7 +10,6 @@ struct ObjectConstant {
 
 struct FrameContext {
 
-
     FrameContext(const FrameContext& other) = delete;
     FrameContext& operator=(const FrameContext& other) = delete;
 

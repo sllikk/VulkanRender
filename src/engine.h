@@ -38,17 +38,23 @@ class Engine {
     FrameContext m_frame_contexts[FRAME_IN_FLIGHTS]{};
     FrameContext& m_get_frame_context_index() { return m_frame_contexts[m_frame_number % FRAME_IN_FLIGHTS]; }
 
+    DeletionQueue m_main_deletion_queue{};
+    VmaAllocator m_vma_allocator = VK_NULL_HANDLE;
+
     bool isResized = false;
 
-public:
-
-  Engine(const Engine& other) = delete;
-  Engine& operator=(const Engine& other) = delete;
-
+    // Render items for drawing
+    std::unique_ptr<RenderItem> m_triangle_item = nullptr;
 
 public:
 
-  Engine(const uint32_t& width, const uint32_t& height, const std::string_view title);
+    Engine(const Engine& other) = delete;
+    Engine& operator=(const Engine& other) = delete;
+
+
+public:
+
+    Engine(const uint32_t& width, const uint32_t& height, const std::string_view title);
 
     void init_window();
     void init_vulkan();
@@ -57,7 +63,8 @@ public:
     void create_swapchain(const uint32_t width, const uint32_t height);
     void resize();
     void destroy_swapchain() const;
-
+    void init_vertex_buffer();
+    void init_pipeline();
 
 
 public:

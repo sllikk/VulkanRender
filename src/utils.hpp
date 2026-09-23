@@ -10,6 +10,8 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
+#define VMA_IMPLEMENTATION
+#include "vma/vk_mem_alloc.h"
 
 
 #include <array>
@@ -28,19 +30,21 @@ constexpr uint32_t FRAME_IN_FLIGHTS = 3;
 
 struct DeletionQueue {
 
- std::deque<std::function<void()>> queue{};
+ std::vector<std::function<void()>> queue{};
 
-  void flush()  {
+    void flush()  {
 
-    for (auto it = queue.rbegin(); it != queue.rend(); ++it) {
-        (*it)();
+        for (auto it = queue.rbegin(); it != queue.rend(); ++it) {
+            (*it)();
+        }
+
+        queue.clear();
+  }
+
+    void add_to_queue(const std::function<void()>&& function) {
+
+        queue.push_back(function);
     }
-    queue.clear();
-  }
-
-  void add_to_queue(const std::function<void()>&& function) {
-      queue.push_back(function);
-  }
 
 
 };
@@ -330,6 +334,7 @@ namespace VkUtils
         image_memory_barrier.image = image;
         image_memory_barrier.pNext = nullptr;
 
+        
         VkDependencyInfo dependency_info = {};
         dependency_info.pNext = nullptr;
         dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -340,6 +345,12 @@ namespace VkUtils
         vkCmdPipelineBarrier2(cmd, &dependency_info);
     }
 
+
+    void load_shaders(std::string_view shader_path)
+    {
+        
+
+    }
 
 }
 
