@@ -462,22 +462,17 @@ void Engine::render()
 
     VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    VkClearColorValue clear_value{};
-    clear_value  = {{0.5f, 0.5, 0.5f, 0.5f} };
-
-    const VkImageSubresourceRange clearRange = VkUtils::subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-    vkCmdClearColorImage(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_GENERAL, &clear_value, 1, &clearRange);
-
     VkRenderingAttachmentInfo rendering_attachment_info{};
     rendering_attachment_info.pNext= nullptr;
     rendering_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    rendering_attachment_info.clearValue.color = clear_value;
+    rendering_attachment_info.clearValue.color = {0.1, 0.2, 0.1, 1};
     rendering_attachment_info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     rendering_attachment_info.imageView = m_swapchain_images_image_views[m_swapchainIndex];
     rendering_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     rendering_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo renderingInfo = {
+        .sType =  VK_STRUCTURE_TYPE_RENDERING_INFO,
         .renderArea = { .offset = { 0, 0 }, .extent = {m_window_width, m_window_height} },
         .layerCount = 1,
         .colorAttachmentCount = 1,
@@ -486,7 +481,6 @@ void Engine::render()
     };
 
     vkCmdBeginRendering(cmd, &renderingInfo);
-
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
 
@@ -506,9 +500,10 @@ void Engine::render()
 
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
+    vkCmdEndRendering(cmd);
+
     VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    vkCmdEndRendering(cmd);
     THROW_IF_ERROR(vkEndCommandBuffer(cmd));
 
     VkCommandBufferSubmitInfo cmd_submit_info{};
