@@ -17,6 +17,7 @@ class Engine {
     VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_compute_queue = VK_NULL_HANDLE; 
+    VkQueue m_transfer_queue = VK_NULL_HANDLE;
 
     VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
@@ -29,8 +30,10 @@ class Engine {
     std::vector<VkImageView> m_swapchain_images_image_views{};
 
     uint32_t m_current_frame_index = 0;
+
     uint32_t m_queue_graphics_family= 0;
     uint32_t m_queue_compute_family = 0;
+    uint32_t m_queue_transfer_family = 0;
 
     uint32_t m_swapchainIndex = 0;
     uint32_t m_frame_number = 0;
@@ -68,6 +71,7 @@ public:
     void destroy_swapchain() const;
     void init_vertex_buffer();
     void init_pipeline();
+
 
 
 public:

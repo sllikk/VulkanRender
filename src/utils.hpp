@@ -13,7 +13,6 @@
 #define VMA_IMPLEMENTATION
 #include "vma/vk_mem_alloc.h"
 
-
 #include <array>
 #include <deque>
 #include <fstream>
@@ -62,7 +61,7 @@ inline void THROW_IF_ERROR(const VkResult& result)
 struct Vertex {
 
     glm::vec3 position;
-    glm::vec4 color;
+    //glm::vec4 color;
 
 
 };
@@ -83,10 +82,22 @@ struct RenderItem {
     uint32_t vertices_count = 0;
     uint32_t vertices_start = 0;
 
-    std::unique_ptr<GpuBuffer> vertex_buffer;
-    std::unique_ptr<GpuBuffer> index_buffer;
+    VkBuffer vertex_buffer = VK_NULL_HANDLE;
 
 };
+
+template<typename T>
+class UniformBuffer
+{
+
+public:
+
+    UniformBuffer(const UniformBuffer& other) = delete;
+    UniformBuffer operator=(const UniformBuffer& other) = delete;
+
+
+};
+
 
 
 namespace VkUtils
@@ -346,6 +357,45 @@ namespace VkUtils
         vkCmdPipelineBarrier2(cmd, &dependency_info);
     }
 
+    void copy_buffer_transfer_queue(VkDevice device, VkQueue transferQueue, VkQueue dstQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, const uint32_t queue_family_index)
+    {
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VkCommandPool cmd_pool = VK_NULL_HANDLE;
+
+        const auto pool_create_info = VkUtils::command_pool_create_info(queue_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+        THROW_IF_ERROR(vkCreateCommandPool(device, &pool_create_info, nullptr, &cmd_pool));
+
+        const auto cmd_buffer_alloc_info = VkUtils::command_buffer_allocate_info(cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        THROW_IF_ERROR(vkAllocateCommandBuffers(device, &cmd_buffer_alloc_info, &cmd));
+
+        // START RECORDING
+        THROW_IF_ERROR(vkResetCommandBuffer(cmd, 0));
+        const auto cmd_begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
+        THROW_IF_ERROR(vkBeginCommandBuffer(cmd, &cmd_begin_info));
+
+        VkBufferCopy region{};
+        region.dstOffset = 0;
+        region.srcOffset = 0;
+        region.size = size;
+
+        vkCmdCopyBuffer(cmd, srcBuffer, dstBuffer, 1, &region);
+        THROW_IF_ERROR(vkEndCommandBuffer(cmd));
+
+        VkCommandBufferSubmitInfo cmd_submit_info = VkUtils::command_buffer_submit(cmd);
+        VkSubmitInfo2 submit_info2{};
+        submit_info2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submit_info2.commandBufferInfoCount = 1;
+        submit_info2.pCommandBufferInfos = &cmd_submit_info;
+        submit_info2.pNext = nullptr;
+
+        THROW_IF_ERROR(vkQueueSubmit2(transferQueue, 1, &submit_info2, nullptr));
+        THROW_IF_ERROR(vkQueueWaitIdle(dstQueue));
+
+        vkDeviceWaitIdle(device);
+        vkFreeCommandBuffers(device, cmd_pool, 1, &cmd);
+        vkDestroyCommandPool(device, cmd_pool, nullptr);
+
+    }
 
     static std::vector<char> load_shaders(const std::string& shader_path)
     {
@@ -355,7 +405,7 @@ namespace VkUtils
             throw std::runtime_error("failed to open file!");
         }
 
-        size_t fileSize = (size_t) file.tellg();
+        size_t fileSize = file.tellg();
         std::vector<char> buffer(fileSize);
 
         file.seekg(0);

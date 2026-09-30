@@ -1,7 +1,7 @@
 #include "engine.h"
 #include "VkBootstrap.h"
 #include <iostream>
-
+#include "renderdoc_app.h"
 
 Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view title)
     : m_window_title(title),  m_window_width(width), m_window_height(height)
@@ -111,16 +111,19 @@ void Engine::init_vulkan()
 
     auto graphics_queue_ret = dev_ret.value().get_queue(vkb::QueueType::graphics);
     auto compute_queue_ret = dev_ret.value().get_queue(vkb::QueueType::compute);
+    auto transfer_queue_ret = dev_ret.value().get_queue(vkb::QueueType::transfer);
 
     m_queue_graphics_family = dev_ret.value().get_queue_index(vkb::QueueType::graphics).value();
     m_queue_compute_family = dev_ret.value().get_queue_index(vkb::QueueType::compute).value();
+    m_queue_transfer_family = dev_ret.value().get_queue_index(vkb::QueueType::transfer).value();
 
     m_instance = instance_ret.value();
     m_messenger = instance_ret.value().debug_messenger;
     m_gpu = dev_ret.value().physical_device;
     m_device = dev_ret.value();
     m_graphics_queue = graphics_queue_ret.value();
-    m_compute_queue = graphics_queue_ret.value();
+    m_compute_queue = compute_queue_ret.value();
+    m_transfer_queue = transfer_queue_ret.value();
 
     // Init vma
     VmaAllocatorCreateInfo vma_allocator_create_info{};
@@ -131,13 +134,11 @@ void Engine::init_vulkan()
 
     THROW_IF_ERROR(vmaCreateAllocator(&vma_allocator_create_info, &m_vma_allocator));
 
-
 }
 
 
 void Engine::init_commands()
 {
-
     const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
@@ -232,19 +233,47 @@ void Engine::init_vertex_buffer()
         {glm::vec3(-0.5f, 0.5f, 0.0f)},
     };
 
-    uint32_t size = static_cast<uint32_t>(vertices.size() * sizeof(Vertex));
+    const VkDeviceSize size = static_cast<VkDeviceSize>(vertices.size() * sizeof(Vertex));
 
+    // DEFAULT BUFFER FOR GPU
     VkBufferCreateInfo vertex_buffer_create_info{};
     vertex_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     vertex_buffer_create_info.pNext = nullptr;
     vertex_buffer_create_info.size = size;
+    vertex_buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-    VmaAllocationCreateInfo allocation_create_info{};
-    VmaAllocationInfo allocation_info;
+    VmaAllocationCreateInfo gpu_allocation_create_info{};
+    gpu_allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    gpu_allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    // FIGURE OUT SHIT WITH buffers
+    VmaAllocation gpuBufferAllocation = VK_NULL_HANDLE;
+    THROW_IF_ERROR(vmaCreateBuffer(m_vma_allocator, &vertex_buffer_create_info, &gpu_allocation_create_info, &m_triangle_item->vertex_buffer, &gpuBufferAllocation, nullptr));
 
 
+    uint32_t arr[] = {m_queue_transfer_family, m_queue_graphics_family};
+
+    // Staging buffer
+    VkBufferCreateInfo staging_buffer_create_info = vertex_buffer_create_info;
+    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    staging_buffer_create_info.queueFamilyIndexCount = std::size(arr);
+    staging_buffer_create_info.pQueueFamilyIndices = arr;
+    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+
+    VmaAllocationCreateInfo staging_allocation_create_info{};
+    staging_allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    staging_allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+    VmaAllocation stagingBufferAllocation = VK_NULL_HANDLE;
+    VkBuffer stagingBuffer = VK_NULL_HANDLE;
+
+    THROW_IF_ERROR(vmaCreateBuffer(m_vma_allocator, &staging_buffer_create_info, &staging_allocation_create_info, &stagingBuffer, &stagingBufferAllocation, nullptr));
+
+    void* data;
+    THROW_IF_ERROR(vmaMapMemory(m_vma_allocator, stagingBufferAllocation, &data));
+    memcpy(data, vertices.data(), size);
+    vmaUnmapMemory(m_vma_allocator, stagingBufferAllocation);
+
+    VkUtils::copy_buffer_transfer_queue(m_device, m_transfer_queue, m_graphics_queue, stagingBuffer, m_triangle_item->vertex_buffer, size, m_queue_transfer_family);
 
 }
 
@@ -342,16 +371,22 @@ void Engine::init_pipeline()
     // shit for layout(binding)
     VkVertexInputAttributeDescription vertex_input_attribute_description{};
     vertex_input_attribute_description.binding = 0;
-    vertex_input_attribute_description.format = VK_FORMAT_R32G32B32_UINT;
+    vertex_input_attribute_description.format = VK_FORMAT_R32G32B32_SFLOAT;
     vertex_input_attribute_description.offset = 0;
+    vertex_input_attribute_description.location = 0;
+
+    VkVertexInputBindingDescription binding_description{};
+    binding_description.binding = 0;
+    binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    binding_description.stride = sizeof(Vertex);
 
     VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info{};
     vertex_input_state_create_info.pNext = nullptr;
     vertex_input_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_state_create_info.pVertexAttributeDescriptions = nullptr;
-    vertex_input_state_create_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_state_create_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_state_create_info.vertexBindingDescriptionCount = 0;
+    vertex_input_state_create_info.pVertexAttributeDescriptions = &vertex_input_attribute_description;
+    vertex_input_state_create_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_state_create_info.vertexAttributeDescriptionCount = 1;
+    vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -406,7 +441,7 @@ void Engine::init_pipeline()
     graphics_pipeline_create_info.renderPass = nullptr;
     graphics_pipeline_create_info.subpass = 0;
 
-     THROW_IF_ERROR(vkCreateGraphicsPipelines(m_device, nullptr, 1, &graphics_pipeline_create_info, nullptr, &m_graphics_pipeline));
+    THROW_IF_ERROR(vkCreateGraphicsPipelines(m_device, nullptr, 1, &graphics_pipeline_create_info, nullptr, &m_graphics_pipeline));
 
 }
 
@@ -418,6 +453,7 @@ void Engine::init() {
     init_commands();
     init_sync_objects();
     create_swapchain(m_window_width, m_window_height);
+    init_vertex_buffer();
     init_pipeline();
 }
 
@@ -473,7 +509,7 @@ void Engine::render()
 
     VkRenderingInfo renderingInfo = {
         .sType =  VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .renderArea = { .offset = { 0, 0 }, .extent = {m_window_width, m_window_height} },
+        .renderArea = { .offset = { .x = 0, .y = 0 }, .extent = {.width = m_window_width, .height = m_window_height} },
         .layerCount = 1,
         .colorAttachmentCount = 1,
         .pColorAttachments = &rendering_attachment_info,
@@ -498,6 +534,8 @@ void Engine::render()
     scissor.extent = {m_window_width, m_window_height};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
+    VkDeviceSize size[] = {0};
+    vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
     vkCmdEndRendering(cmd);
