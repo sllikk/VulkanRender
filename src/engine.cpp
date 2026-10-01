@@ -113,17 +113,17 @@ void Engine::init_vulkan()
     auto compute_queue_ret = dev_ret.value().get_queue(vkb::QueueType::compute);
     auto transfer_queue_ret = dev_ret.value().get_queue(vkb::QueueType::transfer);
 
-    m_queue_graphics_family = dev_ret.value().get_queue_index(vkb::QueueType::graphics).value();
-    m_queue_compute_family = dev_ret.value().get_queue_index(vkb::QueueType::compute).value();
-    m_queue_transfer_family = dev_ret.value().get_queue_index(vkb::QueueType::transfer).value();
+    m_queue_graphics_family_index = dev_ret.value().get_queue_index(vkb::QueueType::graphics).value();
+    m_queue_compute_family_index = dev_ret.value().get_queue_index(vkb::QueueType::compute).value();
+    auto queue_transfer_index = dev_ret.value().get_queue_index(vkb::QueueType::transfer).value();
 
     m_instance = instance_ret.value();
     m_messenger = instance_ret.value().debug_messenger;
     m_gpu = dev_ret.value().physical_device;
     m_device = dev_ret.value();
+
     m_graphics_queue = graphics_queue_ret.value();
     m_compute_queue = compute_queue_ret.value();
-    m_transfer_queue = transfer_queue_ret.value();
 
     // Init vma
     VmaAllocatorCreateInfo vma_allocator_create_info{};
@@ -134,12 +134,20 @@ void Engine::init_vulkan()
 
     THROW_IF_ERROR(vmaCreateAllocator(&vma_allocator_create_info, &m_vma_allocator));
 
+    m_transfer_queue.init(m_device, transfer_queue_ret.value(), queue_transfer_index);
+
+    m_main_deletion_queue.add_to_queue([&](
+    )
+    {
+        vmaDestroyAllocator(m_vma_allocator);
+        m_transfer_queue.destroy();
+    });
 }
 
 
 void Engine::init_commands()
 {
-    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
     {
@@ -147,7 +155,6 @@ void Engine::init_commands()
         const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_frame_contexts[i].command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
         THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_frame_contexts[i].command_buffer));
     }
-
 
 }
 
@@ -225,6 +232,7 @@ void Engine::destroy_swapchain() const
 }
 
 
+
 void Engine::init_vertex_buffer()
 {
     std::vector<Vertex> vertices = {
@@ -247,10 +255,10 @@ void Engine::init_vertex_buffer()
     gpu_allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
     VmaAllocation gpuBufferAllocation = VK_NULL_HANDLE;
+
     THROW_IF_ERROR(vmaCreateBuffer(m_vma_allocator, &vertex_buffer_create_info, &gpu_allocation_create_info, &m_triangle_item->vertex_buffer, &gpuBufferAllocation, nullptr));
 
-
-    uint32_t arr[] = {m_queue_transfer_family, m_queue_graphics_family};
+    const uint32_t arr[] = {m_transfer_queue.get_family_index() , m_queue_graphics_family_index};
 
     // Staging buffer
     VkBufferCreateInfo staging_buffer_create_info = vertex_buffer_create_info;
@@ -268,12 +276,23 @@ void Engine::init_vertex_buffer()
 
     THROW_IF_ERROR(vmaCreateBuffer(m_vma_allocator, &staging_buffer_create_info, &staging_allocation_create_info, &stagingBuffer, &stagingBufferAllocation, nullptr));
 
+    m_main_deletion_queue.add_to_queue([=, this]()
+    {
+        vmaDestroyBuffer(m_vma_allocator, m_triangle_item->vertex_buffer, gpuBufferAllocation);
+        vmaDestroyBuffer(m_vma_allocator, stagingBuffer, stagingBufferAllocation);
+    });
+
     void* data;
     THROW_IF_ERROR(vmaMapMemory(m_vma_allocator, stagingBufferAllocation, &data));
     memcpy(data, vertices.data(), size);
     vmaUnmapMemory(m_vma_allocator, stagingBufferAllocation);
 
-    VkUtils::copy_buffer_transfer_queue(m_device, m_transfer_queue, m_graphics_queue, stagingBuffer, m_triangle_item->vertex_buffer, size, m_queue_transfer_family);
+    m_transfer_queue.immediate_submit([&](const VkCommandBuffer cmd)
+    {
+        VkBufferCopy buffer_copy{};
+        buffer_copy.size = size;
+        vkCmdCopyBuffer(cmd, stagingBuffer, m_triangle_item->vertex_buffer, 1, &buffer_copy);
+    });
 
 }
 
@@ -300,6 +319,12 @@ void Engine::init_pipeline()
 
     THROW_IF_ERROR(vkCreateShaderModule(m_device, &vertex_shader_module_info, nullptr, &vertex_shader_module));
     THROW_IF_ERROR(vkCreateShaderModule(m_device, &fragment_shader_module_info, nullptr, &fragment_shader_module));
+
+    m_main_deletion_queue.add_to_queue([=, this]()
+    {
+        vkDestroyShaderModule(m_device, vertex_shader_module, nullptr);
+        vkDestroyShaderModule(m_device, fragment_shader_module, nullptr);
+    });
 
     VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info{};
     vertex_shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -443,6 +468,12 @@ void Engine::init_pipeline()
 
     THROW_IF_ERROR(vkCreateGraphicsPipelines(m_device, nullptr, 1, &graphics_pipeline_create_info, nullptr, &m_graphics_pipeline));
 
+
+    m_main_deletion_queue.add_to_queue([this]()
+    {
+        vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
+        vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
+    });
 }
 
 
@@ -599,7 +630,7 @@ void Engine::render()
 }
 
 
-void Engine::cleanup() const
+void Engine::cleanup()
 {
     vkDeviceWaitIdle(m_device);
 
@@ -616,11 +647,13 @@ void Engine::cleanup() const
 
     destroy_swapchain();
 
-    vmaDestroyAllocator(m_vma_allocator);
+    m_main_deletion_queue.flush();
+
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     vkb::destroy_debug_utils_messenger(m_instance, m_messenger, nullptr);
     vkDestroyInstance(m_instance, nullptr);
+
     glfwDestroyWindow(m_window);
 
 
