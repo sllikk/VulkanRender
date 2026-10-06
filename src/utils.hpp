@@ -1,5 +1,4 @@
 #pragma once
-#define VMA_IMPLEMENTATION
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -8,14 +7,16 @@
 #include <glm/trigonometric.hpp>
 
 #include <vulkan/vulkan_core.h>
-#include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-
+#define VMA_IMPLEMENTATION
+#include "vma/vk_mem_alloc.h"
 
 #include <array>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <queue>
 #include <stack>
 #include <vector>
@@ -25,24 +26,26 @@
 #include <memory>
 
 
-constexpr uint32_t DOUBLE_BUFFERING = 2;
+constexpr uint32_t FRAME_IN_FLIGHTS = 3;
 
 
 struct DeletionQueue {
 
- std::deque<std::function<void()>> queue{};
+ std::vector<std::function<void()>> queue{};
 
-  void flush()  {
+    void flush()  {
 
-    for (auto it = queue.rbegin(); it != queue.rend(); ++it) {
-        (*it)();
+        for (auto it = queue.rbegin(); it != queue.rend(); ++it) {
+            (*it)();
+        }
+
+        queue.clear();
+  }
+
+    void add_to_queue(const std::function<void()>&& function) {
+
+        queue.push_back(function);
     }
-    queue.clear();
-  }
-
-  void add_to_queue(const std::function<void()>&& function) {
-      queue.push_back(function);
-  }
 
 
 };
@@ -59,7 +62,7 @@ inline void THROW_IF_ERROR(const VkResult& result)
 struct Vertex {
 
     glm::vec3 position;
-    glm::vec4 color;
+    //glm::vec4 color;
 
 
 };
@@ -71,7 +74,6 @@ struct Vertex {
 struct GpuBuffer {
 
     VkBuffer buffer = nullptr;
-    VmaAllocation allocation = nullptr;
 
 };
 
@@ -81,10 +83,22 @@ struct RenderItem {
     uint32_t vertices_count = 0;
     uint32_t vertices_start = 0;
 
-    std::unique_ptr<GpuBuffer> vertex_buffer;
-    std::unique_ptr<GpuBuffer> index_buffer;
+    VkBuffer vertex_buffer = VK_NULL_HANDLE;
 
 };
+
+template<typename T>
+class UniformBuffer
+{
+
+public:
+
+    UniformBuffer(const UniformBuffer& other) = delete;
+    UniformBuffer operator=(const UniformBuffer& other) = delete;
+
+
+};
+
 
 
 namespace VkUtils
@@ -242,35 +256,246 @@ namespace VkUtils
         return info;
     }
 
-    VkSubmitInfo submit_info(const VkCommandBuffer* pCommandBuffers, const VkSemaphore* pSignalSemaphores, const VkSemaphore* pWaitSemaphores, const VkPipelineStageFlags pWaitDstStageMask,
-        const uint32_t& cmdCount, const uint32_t& signalSemaphoreCount, const uint32_t& waitSemaphoreCount)
+    VkCommandBufferSubmitInfo command_buffer_submit(const VkCommandBuffer cmd)
     {
-        VkSubmitInfo info = {};
-        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        info.commandBufferCount = cmdCount;
-        info.pCommandBuffers = pCommandBuffers;
-        info.pSignalSemaphores = pSignalSemaphores;
-        info.pWaitSemaphores = pWaitSemaphores;
-        info.signalSemaphoreCount = signalSemaphoreCount;
-        info.waitSemaphoreCount = waitSemaphoreCount;
-        info.pWaitDstStageMask = &pWaitDstStageMask;
+        VkCommandBufferSubmitInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         info.pNext = nullptr;
+        info.commandBuffer = cmd;
+        info.deviceMask = 0;
+
         return info;
     }
 
-    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, VkResult* pResults, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
+    VkSemaphoreSubmitInfo semaphore_submit_info(const VkSemaphore semaphore, const VkPipelineStageFlags2 flags)
+    {
+        VkSemaphoreSubmitInfo info{};
+        info.pNext = nullptr;
+        info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        info.semaphore = semaphore;
+        info.stageMask = flags;
+        info.deviceIndex = 0;
+        info.value = 1;
+        return info;
+    }
+
+    VkSubmitInfo2 submit_info2(const VkCommandBufferSubmitInfo* pCmdSubmit, const uint32_t cmdSubmitCount, const VkSubmitFlags flags, const VkSemaphoreSubmitInfo* pWaitSemaphores, const VkSemaphoreSubmitInfo* pSignalSemaphores)
+    {
+        VkSubmitInfo2 info{};
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        info.pNext = nullptr;
+        info.pCommandBufferInfos = pCmdSubmit;
+        info.pSignalSemaphoreInfos = pSignalSemaphores;
+        info.pWaitSemaphoreInfos = pWaitSemaphores;
+        info.signalSemaphoreInfoCount = 1;
+        info.waitSemaphoreInfoCount = 1;
+        info.commandBufferInfoCount = 1;
+        info.flags = flags;
+        return info;
+    }
+
+    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
     {
         VkPresentInfoKHR present_info_khr = {};
         present_info_khr.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         present_info_khr.pImageIndices = pImageIndices;
-        present_info_khr.pResults = pResults;
         present_info_khr.pSwapchains = pSwapchains;
+        present_info_khr.swapchainCount = swapchainCount;
         present_info_khr.pWaitSemaphores = pWaitSemaphores;
         present_info_khr.waitSemaphoreCount = waitSemaphoreCount;
-        present_info_khr.swapchainCount = swapchainCount;
         present_info_khr.pNext = nullptr;
         return  present_info_khr;
     }
 
+    VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
+    {
+        VkImageSubresourceRange subresource_range = {};
+        subresource_range.aspectMask = aspect_flags;
+        subresource_range.baseMipLevel = 0;
+        subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
+        subresource_range.baseArrayLayer = 0;
+        subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+        return subresource_range;
+    }
+
+    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
+    {
+        VkImageMemoryBarrier2 image_memory_barrier = {};
+        image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+
+        image_memory_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        image_memory_barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        image_memory_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+
+        image_memory_barrier.newLayout = newLayout;
+        image_memory_barrier.oldLayout = currentLayout;
+
+        VkImageAspectFlags aspect_flags = {};
+
+        if (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+        {
+            aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else
+        {
+            aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+
+        image_memory_barrier.subresourceRange = subresource_range(aspect_flags);
+        image_memory_barrier.image = image;
+        image_memory_barrier.pNext = nullptr;
+
+        
+        VkDependencyInfo dependency_info = {};
+        dependency_info.pNext = nullptr;
+        dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+
+        dependency_info.imageMemoryBarrierCount = 1;
+        dependency_info.pImageMemoryBarriers = &image_memory_barrier;
+
+        vkCmdPipelineBarrier2(cmd, &dependency_info);
+    }
+
+    void copy_buffer_transfer_queue(VkDevice device, VkQueue transferQueue, VkQueue dstQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, const uint32_t queue_family_index)
+    {
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VkCommandPool cmd_pool = VK_NULL_HANDLE;
+
+        const auto pool_create_info = VkUtils::command_pool_create_info(queue_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+        THROW_IF_ERROR(vkCreateCommandPool(device, &pool_create_info, nullptr, &cmd_pool));
+
+        const auto cmd_buffer_alloc_info = VkUtils::command_buffer_allocate_info(cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        THROW_IF_ERROR(vkAllocateCommandBuffers(device, &cmd_buffer_alloc_info, &cmd));
+
+        // START RECORDING
+        THROW_IF_ERROR(vkResetCommandBuffer(cmd, 0));
+        const auto cmd_begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
+        THROW_IF_ERROR(vkBeginCommandBuffer(cmd, &cmd_begin_info));
+
+        VkBufferCopy region{};
+        region.dstOffset = 0;
+        region.srcOffset = 0;
+        region.size = size;
+
+        vkCmdCopyBuffer(cmd, srcBuffer, dstBuffer, 1, &region);
+        THROW_IF_ERROR(vkEndCommandBuffer(cmd));
+
+        VkCommandBufferSubmitInfo cmd_submit_info = VkUtils::command_buffer_submit(cmd);
+        VkSubmitInfo2 submit_info2{};
+        submit_info2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submit_info2.commandBufferInfoCount = 1;
+        submit_info2.pCommandBufferInfos = &cmd_submit_info;
+        submit_info2.pNext = nullptr;
+
+        THROW_IF_ERROR(vkQueueSubmit2(transferQueue, 1, &submit_info2, nullptr));
+        THROW_IF_ERROR(vkQueueWaitIdle(dstQueue));
+
+        vkDeviceWaitIdle(device);
+        vkFreeCommandBuffers(device, cmd_pool, 1, &cmd);
+        vkDestroyCommandPool(device, cmd_pool, nullptr);
+
+    }
+
+    static std::vector<char> load_shaders(const std::string& shader_path)
+    {
+        std::ifstream file(shader_path, std::ios::ate | std::ios::binary );
+        std::cout << shader_path << std::endl;
+        auto path = std::filesystem::current_path();
+        std::cout << path << std::endl;
+
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open file!");
+        }
+
+        size_t fileSize = file.tellg();
+        std::vector<char> buffer(fileSize);
+
+        file.seekg(0);
+        file.read(buffer.data(), fileSize);
+
+        file.close();
+
+        return buffer;
+
+
+    }
+
 }
+
+
+class TransferQueue
+{
+    VkCommandBuffer m_cmd_buffer = VK_NULL_HANDLE;
+    VkCommandPool m_cmd_pool = VK_NULL_HANDLE;
+    VkDevice m_device = VK_NULL_HANDLE;
+    VkFence m_fence = VK_NULL_HANDLE;
+    VkQueue m_queue = VK_NULL_HANDLE;
+    uint32_t m_queue_family_index = 0;
+
+
+public:
+
+    TransferQueue(const TransferQueue& q) = delete;
+    TransferQueue operator=(const TransferQueue& q) = delete;
+    TransferQueue() = default;
+
+    void init(VkDevice device, VkQueue queue, uint32_t queue_family_index)
+    {
+        VkFenceCreateInfo fence_create_info = VkUtils::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+        THROW_IF_ERROR(vkCreateFence(device, &fence_create_info, nullptr, &m_fence));
+
+        VkCommandPoolCreateInfo cmd_pool_create_info = VkUtils::command_pool_create_info(queue_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+        THROW_IF_ERROR(vkCreateCommandPool(device, &cmd_pool_create_info, nullptr, &m_cmd_pool));
+
+        VkCommandBufferAllocateInfo cmd_allocate_info = VkUtils::command_buffer_allocate_info(m_cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        THROW_IF_ERROR(vkAllocateCommandBuffers(device, &cmd_allocate_info, &m_cmd_buffer));
+
+        m_queue = queue;
+        m_queue_family_index  = queue_family_index;
+        m_device = device;
+    }
+
+    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function)
+    {
+        THROW_IF_ERROR(vkResetFences(m_device, 1, &m_fence));
+        THROW_IF_ERROR(vkResetCommandBuffer(m_cmd_buffer, 0));
+        VkCommandBufferBeginInfo begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
+
+        THROW_IF_ERROR(vkBeginCommandBuffer(m_cmd_buffer, &begin_info));
+
+        function(m_cmd_buffer); // some work what we wanna
+
+        THROW_IF_ERROR(vkEndCommandBuffer(m_cmd_buffer));
+
+        const VkCommandBufferSubmitInfo command_buffer_submit_info = VkUtils::command_buffer_submit(m_cmd_buffer);
+        VkSubmitInfo2 submit_info{};
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submit_info.commandBufferInfoCount = 1;
+        submit_info.pCommandBufferInfos = &command_buffer_submit_info;
+
+        THROW_IF_ERROR(vkQueueSubmit2(m_queue, 1, &submit_info, m_fence));
+        THROW_IF_ERROR(vkWaitForFences(m_device, 1, &m_fence, VK_TRUE, UINT64_MAX));
+        THROW_IF_ERROR(vkResetCommandPool(m_device, m_cmd_pool, 0));
+
+    }
+
+    void destroy()
+    {
+        vkDestroyFence(m_device, m_fence, nullptr);
+        vkFreeCommandBuffers(m_device, m_cmd_pool, 1, &m_cmd_buffer);
+        vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
+    }
+
+    uint32_t get_family_index() const
+    {
+        return m_queue_family_index;
+    }
+
+    VkQueue get_queue() const
+    {
+        return m_queue;
+    }
+};
 

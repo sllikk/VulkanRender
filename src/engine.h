@@ -2,6 +2,43 @@
 #include  "utils.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include "FrameResources.h"
+
+
+class Timer {
+
+    float m_delta_time;
+    float m_current_time;
+    float m_prev;
+
+public:
+
+    Timer() {
+        m_delta_time = 0.0f;
+        m_prev = 0.0f;
+        m_current_time = static_cast<float>(glfwGetTime());
+    }
+
+    Timer(const Timer& other) = delete;
+    Timer operator=(const Timer& other) = delete;
+
+
+    void update() {
+        m_current_time = static_cast<float>(glfwGetTime());
+        m_delta_time = m_current_time - m_prev;
+        m_prev = m_current_time;
+    }
+
+    float GetCurrentTime() const {
+        return m_current_time;
+    }
+
+    float GetDeltaTime() const {
+        return m_delta_time;
+    }
+
+};
+
 
 class Engine {
 
@@ -15,13 +52,11 @@ class Engine {
     VkInstance m_instance = VK_NULL_HANDLE;
     VkPhysicalDevice m_gpu = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
-    VkQueue m_compute_queue = VK_NULL_HANDLE;
+    VkQueue m_compute_queue = VK_NULL_HANDLE; 
 
     VkDebugUtilsMessengerEXT m_messenger = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
     VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
-    VkCommandBuffer m_cmd_buffer = VK_NULL_HANDLE;
-    VkCommandPool m_cmd_pool = VK_NULL_HANDLE;
     VkRect2D m_scissor{};
     VkViewport m_viewport{};
 
@@ -29,39 +64,48 @@ class Engine {
     std::vector<VkImage> m_swapchain_images{};
     std::vector<VkImageView> m_swapchain_images_image_views{};
 
-    VkFence m_fence = VK_NULL_HANDLE;
-    VkSemaphore m_swapchain_semaphore = VK_NULL_HANDLE;
-    VkSemaphore m_render_semaphore = VK_NULL_HANDLE;
-
     uint32_t m_current_frame_index = 0;
-    uint32_t m_queue_graphics_family= 0;
-    uint32_t m_queue_compute_family = 0;
 
-    uint32_t swapchainIndex = 0;
+    uint32_t m_queue_graphics_family_index = 0;
+    uint32_t m_queue_compute_family_index = 0;
 
-    VkRenderPass m_render_pass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> m_framebuffers{};
+    uint32_t m_swapchainIndex = 0;
+    uint32_t m_frame_number = 0;
+
+    FrameContext m_frame_contexts[FRAME_IN_FLIGHTS]{};
+    FrameContext& m_get_frame_context_index() { return m_frame_contexts[m_frame_number % FRAME_IN_FLIGHTS]; }
+
+    DeletionQueue m_main_deletion_queue{};
+    TransferQueue m_transfer_queue{};
+
+    VmaAllocator m_vma_allocator = VK_NULL_HANDLE;
+    VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
+    VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
+
     bool isResized = false;
 
-public:
-
-  Engine(const Engine& other) = delete;
-  Engine& operator=(const Engine& other) = delete;
-
+    // Render items for drawing
+    std::unique_ptr<RenderItem> m_triangle_item = nullptr;
+    Timer m_timer{};
 
 public:
 
-  Engine(const uint32_t& width, const uint32_t& height, const std::string_view& title);
+    Engine(const Engine& other) = delete;
+    Engine& operator=(const Engine& other) = delete;
+
+public:
+
+    Engine(const uint32_t& width, const uint32_t& height, const std::string_view title);
 
     void init_window();
     void init_vulkan();
     void init_commands();
     void init_sync_objects();
-    void init_render_passes();
-    void init_framebuffers();
     void create_swapchain(const uint32_t width, const uint32_t height);
     void resize();
     void destroy_swapchain() const;
+    void init_vertex_buffer();
+    void init_pipeline();
 
 
 public:
@@ -69,7 +113,7 @@ public:
     void init();
     void update();
     void render();
-    void cleanup() const;
+    void cleanup();
 
 
 
