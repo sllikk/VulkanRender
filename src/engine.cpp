@@ -299,8 +299,8 @@ void Engine::init_vertex_buffer()
 
 void Engine::init_pipeline()
 {
-    auto fragment_shader = VkUtils::load_shaders("compiled_shaders/fragment_shader.frag.spv");
-    auto vertex_shader = VkUtils::load_shaders("compiled_shaders/vertex_shader.vert.spv");
+    auto fragment_shader = VkUtils::load_shaders("../compiled_shaders/fragment_shader.frag.spv");
+    auto vertex_shader = VkUtils::load_shaders("../compiled_shaders/vertex_shader.vert.spv");
 
     VkShaderModuleCreateInfo vertex_shader_module_info{};
     vertex_shader_module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -495,6 +495,9 @@ void Engine::update() {
     {
         glfwPollEvents();
 
+        m_timer.update();
+        std::cout << m_timer.GetDeltaTime() << std::endl;
+
         if (isResized == true)
         {
             resize();
@@ -566,6 +569,7 @@ void Engine::render()
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     VkDeviceSize size[] = {0};
+
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
