@@ -1,16 +1,20 @@
 #pragma once
 
+#define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_RADIANS
+
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <glm/matrix.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/trigonometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-#define VMA_IMPLEMENTATION
 #include "vma/vk_mem_alloc.h"
 
 #include <array>
@@ -71,39 +75,64 @@ struct Vertex {
 // This buffer uses for everything mem allocations
 //
 
-struct GpuBuffer {
-
-    VkBuffer buffer = nullptr;
-
-};
-
-
-struct RenderItem {
-
-    uint32_t vertices_count = 0;
-    uint32_t vertices_start = 0;
-
-    VkBuffer vertex_buffer = VK_NULL_HANDLE;
-
-};
 
 template<typename T>
 class UniformBuffer
 {
+    VkBuffer m_buffer = VK_NULL_HANDLE;
+    VmaAllocation m_allocation = VK_NULL_HANDLE;
+    VmaAllocator m_allocator;
+    void* m_data;
 
 public:
 
     UniformBuffer(const UniformBuffer& other) = delete;
     UniformBuffer operator=(const UniformBuffer& other) = delete;
 
+    UniformBuffer(VmaAllocator allocator, const uint32_t* queue_index) {
 
+        m_allocator = allocator;
+        VkBufferCreateInfo buffer_create_info{};
+        buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        buffer_create_info.size = sizeof(T);
+        buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        buffer_create_info.pQueueFamilyIndices = queue_index;
+        buffer_create_info.queueFamilyIndexCount = 1;
+        buffer_create_info.pNext = nullptr;
+
+        VmaAllocationCreateInfo allocation_create_info{};
+        allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+        allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        THROW_IF_ERROR(vmaCreateBuffer(m_allocator, &buffer_create_info, &allocation_create_info, &m_buffer, &m_allocation, nullptr));
+        THROW_IF_ERROR(vmaMapMemory(m_allocator, m_allocation, &m_data));
+
+    }
+
+    void update(const T* newData, const uint32_t& size) {
+        memcpy(m_data, newData, size);
+    }
+
+    void destroy() const {
+        vmaUnmapMemory(m_allocator, m_allocation);
+        vmaDestroyBuffer(m_allocator, m_buffer, m_allocation);
+    }
+
+    VkBuffer get_buffer() const {
+        return m_buffer;
+    }
+
+    VkDeviceSize get_size() const {
+        return static_cast<VkDeviceSize>(sizeof(T));
+    }
 };
 
 
 
 namespace VkUtils
 {
-    VkCommandPoolCreateInfo command_pool_create_info (uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags)
+  inline  VkCommandPoolCreateInfo command_pool_create_info (uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags)
     {
         VkCommandPoolCreateInfo command_pool_create_info = {};
         command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -113,7 +142,7 @@ namespace VkUtils
         return command_pool_create_info;
     }
 
-    VkCommandBufferAllocateInfo command_buffer_allocate_info(VkCommandPool cmd_pool, VkCommandBufferLevel level, const uint32_t count)
+    inline VkCommandBufferAllocateInfo command_buffer_allocate_info(VkCommandPool cmd_pool, VkCommandBufferLevel level, const uint32_t count)
     {
         VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
         command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -125,7 +154,7 @@ namespace VkUtils
         return command_buffer_allocate_info;
     }
 
-    VkCommandBufferBeginInfo command_buffer_begin_info(const VkCommandBufferUsageFlags flags, const VkCommandBufferInheritanceInfo* inheritance_info)
+    inline VkCommandBufferBeginInfo command_buffer_begin_info(const VkCommandBufferUsageFlags flags, const VkCommandBufferInheritanceInfo* inheritance_info)
     {
         VkCommandBufferBeginInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -137,7 +166,7 @@ namespace VkUtils
     }
 
 
-    VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags)
+   inline VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags)
     {
         VkFenceCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
@@ -147,7 +176,7 @@ namespace VkUtils
 
     }
 
-    VkSemaphoreCreateInfo semaphore_create_info(VkSemaphoreCreateFlags flags)
+    inline VkSemaphoreCreateInfo semaphore_create_info(VkSemaphoreCreateFlags flags)
     {
         VkSemaphoreCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -157,7 +186,7 @@ namespace VkUtils
     }
 
 
-    VkEventCreateInfo event_create_info(VkEventCreateFlags flags)
+   inline VkEventCreateInfo event_create_info(VkEventCreateFlags flags)
     {
         VkEventCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
@@ -166,7 +195,7 @@ namespace VkUtils
         return info;
     }
 
-    VkAttachmentDescription attachment_description(const VkFormat format, const VkImageLayout initial, const VkImageLayout final, const
+   inline  VkAttachmentDescription attachment_description(const VkFormat format, const VkImageLayout initial, const VkImageLayout final, const
         VkAttachmentStoreOp storeOpp , const VkAttachmentLoadOp loadOpp , const VkAttachmentStoreOp stencilStoreOpp, const VkAttachmentLoadOp stencilLoadOpp)
     {
         VkAttachmentDescription description = {};
@@ -183,7 +212,7 @@ namespace VkUtils
         return description;
     }
 
-    VkAttachmentReference attachment_reference(const uint32_t& attachment, const VkImageLayout layout)
+   inline VkAttachmentReference attachment_reference(const uint32_t& attachment, const VkImageLayout layout)
     {
         VkAttachmentReference attachment_reference = {};
         attachment_reference.attachment = attachment;
@@ -191,7 +220,7 @@ namespace VkUtils
         return attachment_reference;
     }
 
-    VkSubpassDescription subpass_description(VkSubpassDescriptionFlags flags, VkPipelineBindPoint bindPoint, const VkAttachmentReference* pInputRef ,const VkAttachmentReference* pColorRef, const VkAttachmentReference* pDepthStencilRef,
+    inline VkSubpassDescription subpass_description(VkSubpassDescriptionFlags flags, VkPipelineBindPoint bindPoint, const VkAttachmentReference* pInputRef ,const VkAttachmentReference* pColorRef, const VkAttachmentReference* pDepthStencilRef,
         const uint32_t& colorRefCount, const uint32_t& inputRefCount)
     {
         VkSubpassDescription description = {};
@@ -204,14 +233,14 @@ namespace VkUtils
         return description;
     }
 
-    VkSubpassDependency subpass_dependency()
+   inline VkSubpassDependency subpass_dependency()
     {
         VkSubpassDependency dependency = {};
 
         return dependency;
     }
 
-    VkRenderPassCreateInfo render_pass_create_info(VkRenderPassCreateFlags flags, const uint32_t& attachmentCount, const uint32_t& subpassCount, const uint32_t& dependencyCount, const VkSubpassDescription* pSubpasses,
+   inline VkRenderPassCreateInfo render_pass_create_info(VkRenderPassCreateFlags flags, const uint32_t& attachmentCount, const uint32_t& subpassCount, const uint32_t& dependencyCount, const VkSubpassDescription* pSubpasses,
         const VkAttachmentDescription* pAttachments, const VkSubpassDependency* pSubpassDependencies)
     {
         VkRenderPassCreateInfo info = {};
@@ -227,7 +256,7 @@ namespace VkUtils
         return info;
     }
 
-    VkFramebufferCreateInfo framebuffer_create_info(const VkFramebufferCreateFlags flags, const VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
+  inline  VkFramebufferCreateInfo framebuffer_create_info(const VkFramebufferCreateFlags flags, const VkImageView* pAttachments, const VkRenderPass renderPass, const uint32_t& attachmentCount, const uint32_t& layoutCount,
         const uint32_t& height, const uint32_t& width)
     {
         VkFramebufferCreateInfo info = {};
@@ -243,7 +272,7 @@ namespace VkUtils
         return info;
     }
 
-    VkRenderPassBeginInfo render_pass_begin_info( const VkRenderPass renderPass, const VkFramebuffer framebuffer,  const uint32_t& clearValueCount, const VkClearValue* pClearValues, const VkRect2D area)
+   inline VkRenderPassBeginInfo render_pass_begin_info( const VkRenderPass renderPass, const VkFramebuffer framebuffer,  const uint32_t& clearValueCount, const VkClearValue* pClearValues, const VkRect2D area)
     {
         VkRenderPassBeginInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -256,7 +285,7 @@ namespace VkUtils
         return info;
     }
 
-    VkCommandBufferSubmitInfo command_buffer_submit(const VkCommandBuffer cmd)
+   inline VkCommandBufferSubmitInfo command_buffer_submit(const VkCommandBuffer cmd)
     {
         VkCommandBufferSubmitInfo info{};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -267,7 +296,7 @@ namespace VkUtils
         return info;
     }
 
-    VkSemaphoreSubmitInfo semaphore_submit_info(const VkSemaphore semaphore, const VkPipelineStageFlags2 flags)
+  inline  VkSemaphoreSubmitInfo semaphore_submit_info(const VkSemaphore semaphore, const VkPipelineStageFlags2 flags)
     {
         VkSemaphoreSubmitInfo info{};
         info.pNext = nullptr;
@@ -279,7 +308,7 @@ namespace VkUtils
         return info;
     }
 
-    VkSubmitInfo2 submit_info2(const VkCommandBufferSubmitInfo* pCmdSubmit, const uint32_t cmdSubmitCount, const VkSubmitFlags flags, const VkSemaphoreSubmitInfo* pWaitSemaphores, const VkSemaphoreSubmitInfo* pSignalSemaphores)
+  inline  VkSubmitInfo2 submit_info2(const VkCommandBufferSubmitInfo* pCmdSubmit, const uint32_t cmdSubmitCount, const VkSubmitFlags flags, const VkSemaphoreSubmitInfo* pWaitSemaphores, const VkSemaphoreSubmitInfo* pSignalSemaphores)
     {
         VkSubmitInfo2 info{};
         info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
@@ -294,7 +323,7 @@ namespace VkUtils
         return info;
     }
 
-    VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
+  inline  VkPresentInfoKHR present_info_khr(const uint32_t* pImageIndices, const VkSwapchainKHR* pSwapchains, const VkSemaphore* pWaitSemaphores, const uint32_t& waitSemaphoreCount, const uint32_t& swapchainCount)
     {
         VkPresentInfoKHR present_info_khr = {};
         present_info_khr.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -307,7 +336,7 @@ namespace VkUtils
         return  present_info_khr;
     }
 
-    VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
+  inline  VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
     {
         VkImageSubresourceRange subresource_range = {};
         subresource_range.aspectMask = aspect_flags;
@@ -319,7 +348,7 @@ namespace VkUtils
         return subresource_range;
     }
 
-    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
+  inline  void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
     {
         VkImageMemoryBarrier2 image_memory_barrier = {};
         image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -358,7 +387,7 @@ namespace VkUtils
         vkCmdPipelineBarrier2(cmd, &dependency_info);
     }
 
-    void copy_buffer_transfer_queue(VkDevice device, VkQueue transferQueue, VkQueue dstQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, const uint32_t queue_family_index)
+   inline void copy_buffer_transfer_queue(VkDevice device, VkQueue transferQueue, VkQueue dstQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, const uint32_t queue_family_index)
     {
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         VkCommandPool cmd_pool = VK_NULL_HANDLE;
@@ -402,8 +431,6 @@ namespace VkUtils
     {
         std::ifstream file(shader_path, std::ios::ate | std::ios::binary );
         std::cout << shader_path << std::endl;
-        auto path = std::filesystem::current_path();
-        std::cout << path << std::endl;
 
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");
@@ -457,8 +484,7 @@ public:
         m_device = device;
     }
 
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function)
-    {
+    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const {
         THROW_IF_ERROR(vkResetFences(m_device, 1, &m_fence));
         THROW_IF_ERROR(vkResetCommandBuffer(m_cmd_buffer, 0));
         VkCommandBufferBeginInfo begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
@@ -488,14 +514,20 @@ public:
         vkDestroyCommandPool(m_device, m_cmd_pool, nullptr);
     }
 
-    uint32_t get_family_index() const
+  inline  uint32_t get_family_index() const
     {
         return m_queue_family_index;
     }
 
-    VkQueue get_queue() const
+  inline  VkQueue get_queue() const
     {
         return m_queue;
     }
 };
 
+
+inline std::filesystem::path GetCurrentWorkingDirectoryPath() {
+
+    std::filesystem::path path = std::filesystem::current_path().parent_path().parent_path();
+    return path;
+}

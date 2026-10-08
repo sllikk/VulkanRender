@@ -1,7 +1,10 @@
+#define VMA_IMPLEMENTATION
+
 #include "engine.h"
 #include "VkBootstrap.h"
+
+
 #include <iostream>
-#include "renderdoc_app.h"
 
 Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view title)
     : m_window_title(title),  m_window_width(width), m_window_height(height)
@@ -31,6 +34,7 @@ void Engine::init_window()
     }
 
 }
+
 
 
 void Engine::init_vulkan()
@@ -145,15 +149,24 @@ void Engine::init_vulkan()
 }
 
 
+void Engine::init_frame_resources()
+{
+    for (int i = 0; i < FRAME_IN_FLIGHTS; i++) {
+
+        m_frame_contexts[i] = std::make_unique<FrameContext>(m_vma_allocator, &m_queue_graphics_family_index);
+    }
+
+}
+
 void Engine::init_commands()
 {
     const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
     {
-        THROW_IF_ERROR(vkCreateCommandPool(m_device, &cmd_pool_create_info, nullptr, &m_frame_contexts[i].command_pool));
-        const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_frame_contexts[i].command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
-        THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_frame_contexts[i].command_buffer));
+        THROW_IF_ERROR(vkCreateCommandPool(m_device, &cmd_pool_create_info, nullptr, &m_frame_contexts[i]->command_pool));
+        const auto& cmd_allocation_create_info = VkUtils::command_buffer_allocate_info(m_frame_contexts[i]->command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        THROW_IF_ERROR(vkAllocateCommandBuffers(m_device, &cmd_allocation_create_info, &m_frame_contexts[i]->command_buffer));
     }
 
 }
@@ -166,10 +179,10 @@ void Engine::init_sync_objects()
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
     {
-        THROW_IF_ERROR(vkCreateFence(m_device, &fence_create_info, nullptr, &m_frame_contexts[i].fence));
+        THROW_IF_ERROR(vkCreateFence(m_device, &fence_create_info, nullptr, &m_frame_contexts[i]->fence));
 
-        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i].swapchain_semaphore));
-        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i].render_semaphore));
+        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i]->swapchain_semaphore));
+        THROW_IF_ERROR(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &m_frame_contexts[i]->render_semaphore));
 
     }
 
@@ -231,6 +244,77 @@ void Engine::destroy_swapchain() const
     }
 }
 
+void Engine::init_descriptors()
+{
+    VkDescriptorSetLayoutBinding descriptor_set_layout_binding{};
+    descriptor_set_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    descriptor_set_layout_binding.binding = 0;
+    descriptor_set_layout_binding.descriptorCount = 1;
+    descriptor_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_set_layout_binding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{};
+    descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptor_set_layout_create_info.bindingCount = 1;
+    descriptor_set_layout_create_info.pBindings = &descriptor_set_layout_binding;
+    descriptor_set_layout_create_info.pNext = nullptr;
+
+    THROW_IF_ERROR( vkCreateDescriptorSetLayout(m_device, &descriptor_set_layout_create_info, nullptr, &m_descriptor_set_layout));
+
+    constexpr VkDescriptorPoolSize descriptor_pool_size[] {
+     {   .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1, }
+    };
+
+    VkDescriptorPoolCreateInfo descriptor_pool_create_info{};
+    descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptor_pool_create_info.pPoolSizes = descriptor_pool_size;
+    descriptor_pool_create_info.poolSizeCount = 1;
+    descriptor_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+    descriptor_pool_create_info.maxSets = 1;
+    descriptor_pool_create_info.pNext = nullptr;
+
+    THROW_IF_ERROR(vkCreateDescriptorPool(m_device, &descriptor_pool_create_info, nullptr, &m_descriptor_pool));
+
+    VkDescriptorSetAllocateInfo allocate_info{};
+    allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocate_info.pSetLayouts = &m_descriptor_set_layout;
+    allocate_info.descriptorSetCount = 1;
+    allocate_info.descriptorPool = m_descriptor_pool;
+    allocate_info.pNext = nullptr;
+
+    THROW_IF_ERROR(vkAllocateDescriptorSets(m_device, &allocate_info, &m_descriptor_set));
+
+
+    VkDescriptorBufferInfo descriptor_buffer_info{};
+
+    for (int i = 0; i < FRAME_IN_FLIGHTS; i++) {
+
+
+        descriptor_buffer_info.range = m_frame_contexts[i]->m_main_pass_uniform_buffer->get_size();
+        descriptor_buffer_info.offset = 0;
+        descriptor_buffer_info.buffer = m_frame_contexts[i]->m_main_pass_uniform_buffer->get_buffer();
+
+
+    }
+    VkWriteDescriptorSet write_descriptor_set{};
+    write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_descriptor_set.descriptorCount = 1;
+    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write_descriptor_set.dstBinding = 0;
+    write_descriptor_set.dstSet = m_descriptor_set;
+    write_descriptor_set.pBufferInfo = &descriptor_buffer_info;
+    write_descriptor_set.pNext = nullptr;
+
+    vkUpdateDescriptorSets(m_device, 1, &write_descriptor_set, 0, nullptr);
+
+    m_main_deletion_queue.add_to_queue([this]() {
+
+        vkDestroyDescriptorSetLayout(m_device, m_descriptor_set_layout, nullptr);
+        vkFreeDescriptorSets(m_device, m_descriptor_pool, 1, &m_descriptor_set);
+        vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
+    });
+
+}
 
 
 void Engine::init_vertex_buffer()
@@ -435,13 +519,17 @@ void Engine::init_pipeline()
     rasterizer.depthBiasClamp = 0.0f; // Optional
     rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
 
+    VkPushConstantRange range;
+    range.size = sizeof(ObjectConstant);
+    range.offset = 0;
+    range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0; // Optional
-    pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+    pipelineLayoutInfo.setLayoutCount = 1; // Optional
+    pipelineLayoutInfo.pSetLayouts = &m_descriptor_set_layout; // Optional
+    pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
+    pipelineLayoutInfo.pPushConstantRanges = &range; // Optional
 
     THROW_IF_ERROR(vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_pipeline_layout));
 
@@ -476,16 +564,24 @@ void Engine::init_pipeline()
     });
 }
 
+void Engine::init_texture() {
+
+
+
+}
 
 void Engine::init() {
 
     init_window();
     init_vulkan();
+    init_frame_resources();
     init_commands();
     init_sync_objects();
     create_swapchain(m_window_width, m_window_height);
     init_vertex_buffer();
+    init_descriptors();
     init_pipeline();
+
 }
 
 
@@ -496,7 +592,17 @@ void Engine::update() {
         glfwPollEvents();
 
         m_timer.update();
-        std::cout << m_timer.GetDeltaTime() << std::endl;
+        m_object_constant.worldTransform = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(sin(m_timer.GetCurrentTime()), 1, 1));
+
+        // update data ubo
+//        m_main_pass_ubo.view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+//        m_main_pass_ubo.proj =  glm::perspective(glm::radians(90.0f), (float)m_window_width / (float)m_window_height, 0.1f, 1000.0f);
+//        m_main_pass_ubo.proj[1][1] *= -1;
+
+//        m_main_pass_ubo.projView = m_main_pass_ubo.proj * m_main_pass_ubo.view;
+        MainPassUbo ubo;
+        ubo.proj =  glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(m_timer.GetCurrentTime(), 0, 1));
+        m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
 
         if (isResized == true)
         {
@@ -570,6 +676,8 @@ void Engine::render()
 
     VkDeviceSize size[] = {0};
 
+    vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1, &m_descriptor_set, 0, nullptr);
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
@@ -641,13 +749,14 @@ void Engine::cleanup()
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)
     {
-        vkDestroyCommandPool(m_device, m_frame_contexts[i].command_pool, nullptr);
+        vkDestroyCommandPool(m_device, m_frame_contexts[i]->command_pool, nullptr);
 
-        vkDestroyFence(m_device, m_frame_contexts[i].fence, nullptr);
-        vkDestroySemaphore(m_device, m_frame_contexts[i].swapchain_semaphore, nullptr);
-        vkDestroySemaphore(m_device, m_frame_contexts[i].render_semaphore, nullptr);
+        vkDestroyFence(m_device, m_frame_contexts[i]->fence, nullptr);
+        vkDestroySemaphore(m_device, m_frame_contexts[i]->swapchain_semaphore, nullptr);
+        vkDestroySemaphore(m_device, m_frame_contexts[i]->render_semaphore, nullptr);
+
+        m_frame_contexts[i]->deletion_queue.flush();
     }
-
 
     destroy_swapchain();
 

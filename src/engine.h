@@ -1,8 +1,21 @@
 #pragma once
-#include  "utils.hpp"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include "material.h"
+#include  "utils.hpp"
 #include "FrameResources.h"
+
+
+struct RenderItem {
+
+    uint32_t vertices_count = 0;
+    uint32_t vertices_start = 0;
+
+    VkBuffer vertex_buffer = VK_NULL_HANDLE;
+
+
+};
 
 
 class Timer {
@@ -72,8 +85,8 @@ class Engine {
     uint32_t m_swapchainIndex = 0;
     uint32_t m_frame_number = 0;
 
-    FrameContext m_frame_contexts[FRAME_IN_FLIGHTS]{};
-    FrameContext& m_get_frame_context_index() { return m_frame_contexts[m_frame_number % FRAME_IN_FLIGHTS]; }
+    std::array<std::unique_ptr<FrameContext>, FRAME_IN_FLIGHTS> m_frame_contexts{};
+    FrameContext& m_get_frame_context_index() const { return *m_frame_contexts[m_frame_number % FRAME_IN_FLIGHTS]; }
 
     DeletionQueue m_main_deletion_queue{};
     TransferQueue m_transfer_queue{};
@@ -87,6 +100,11 @@ class Engine {
     // Render items for drawing
     std::unique_ptr<RenderItem> m_triangle_item = nullptr;
     Timer m_timer{};
+    ObjectConstant m_object_constant{};
+
+    VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
+    VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
 
 public:
 
@@ -99,13 +117,16 @@ public:
 
     void init_window();
     void init_vulkan();
+    void init_frame_resources();
     void init_commands();
     void init_sync_objects();
     void create_swapchain(const uint32_t width, const uint32_t height);
     void resize();
     void destroy_swapchain() const;
+    void init_descriptors();
     void init_vertex_buffer();
     void init_pipeline();
+    void init_texture();
 
 
 public:

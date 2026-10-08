@@ -16,7 +16,11 @@ set(PROJECT_SRC
     "src/FrameResources.cpp"
     "src/pipeline_manager.h"
     "src/pipeline_manager.cpp"
-        src/renderdoc_app.h
+    "src/renderdoc_app.h"
+    "src/material.h"
+    "src/material.cpp"
+    "src/stb_image.h"
+    "src/stb_image_implementation.cpp"
 )
 
 find_package(Vulkan REQUIRED)
