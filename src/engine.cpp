@@ -73,7 +73,10 @@ void Engine::init_vulkan()
     physical_device_selector.set_minimum_version(1, 3);
     // Engine cannot function without this extensions
     VkPhysicalDeviceFeatures required_features{};
+
     required_features.multiViewport = true;
+    required_features.samplerAnisotropy = true;
+    required_features.tessellationShader = true;
 
     VkPhysicalDeviceVulkan11Features features1{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     features1.multiview = true;
@@ -85,6 +88,7 @@ void Engine::init_vulkan()
     features3.synchronization2 = true;
     features3.dynamicRendering = true;
 
+    physical_device_selector.set_required_features(required_features);
     physical_device_selector.set_required_features_11(features1);
     physical_device_selector.set_required_features_12(features2);
     physical_device_selector.set_required_features_13(features3);
@@ -244,31 +248,41 @@ void Engine::destroy_swapchain() const
     }
 }
 
-void Engine::init_descriptors()
-{
-    VkDescriptorSetLayoutBinding descriptor_set_layout_binding{};
-    descriptor_set_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    descriptor_set_layout_binding.binding = 0;
-    descriptor_set_layout_binding.descriptorCount = 1;
-    descriptor_set_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptor_set_layout_binding.pImmutableSamplers = nullptr;
+void Engine::init_descriptors() {
+    std::array<VkDescriptorSetLayoutBinding, 2> descriptor_set_layout_bindings{};
+    descriptor_set_layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    descriptor_set_layout_bindings[0].binding = 0;
+    descriptor_set_layout_bindings[0].descriptorCount = 1;
+    descriptor_set_layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_set_layout_bindings[0].pImmutableSamplers = nullptr;
+
+    descriptor_set_layout_bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    descriptor_set_layout_bindings[1].binding = 1;
+    descriptor_set_layout_bindings[1].descriptorCount = 1;
+    descriptor_set_layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_set_layout_bindings[1].pImmutableSamplers = nullptr;
+
 
     VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{};
     descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptor_set_layout_create_info.bindingCount = 1;
-    descriptor_set_layout_create_info.pBindings = &descriptor_set_layout_binding;
+    descriptor_set_layout_create_info.bindingCount = static_cast<uint32_t>(descriptor_set_layout_bindings.size());
+    descriptor_set_layout_create_info.pBindings = descriptor_set_layout_bindings.data();
     descriptor_set_layout_create_info.pNext = nullptr;
 
     THROW_IF_ERROR( vkCreateDescriptorSetLayout(m_device, &descriptor_set_layout_create_info, nullptr, &m_descriptor_set_layout));
 
-    constexpr VkDescriptorPoolSize descriptor_pool_size[] {
-     {   .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1, }
-    };
+    std::array<VkDescriptorPoolSize, 2> descriptor_pool_sizes{};
+    descriptor_pool_sizes[0].descriptorCount = 1;
+    descriptor_pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+
+    descriptor_pool_sizes[1].descriptorCount = 1;
+    descriptor_pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+
 
     VkDescriptorPoolCreateInfo descriptor_pool_create_info{};
     descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool_create_info.pPoolSizes = descriptor_pool_size;
-    descriptor_pool_create_info.poolSizeCount = 1;
+    descriptor_pool_create_info.pPoolSizes = descriptor_pool_sizes.data();
+    descriptor_pool_create_info.poolSizeCount = static_cast<uint32_t>(descriptor_pool_sizes.size());
     descriptor_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     descriptor_pool_create_info.maxSets = 1;
     descriptor_pool_create_info.pNext = nullptr;
@@ -289,13 +303,17 @@ void Engine::init_descriptors()
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++) {
 
-
         descriptor_buffer_info.range = m_frame_contexts[i]->m_main_pass_uniform_buffer->get_size();
         descriptor_buffer_info.offset = 0;
         descriptor_buffer_info.buffer = m_frame_contexts[i]->m_main_pass_uniform_buffer->get_buffer();
-
-
     }
+
+    VkDescriptorImageInfo image_info{};
+    image_info.sampler = m_texture.m_sampler;
+    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_info.imageView = m_texture.m_image_view;
+
+
     VkWriteDescriptorSet write_descriptor_set{};
     write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write_descriptor_set.descriptorCount = 1;
@@ -305,7 +323,20 @@ void Engine::init_descriptors()
     write_descriptor_set.pBufferInfo = &descriptor_buffer_info;
     write_descriptor_set.pNext = nullptr;
 
-    vkUpdateDescriptorSets(m_device, 1, &write_descriptor_set, 0, nullptr);
+
+    VkWriteDescriptorSet write_descriptor_set_1{};
+    write_descriptor_set_1.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write_descriptor_set_1.descriptorCount = 1;
+    write_descriptor_set_1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write_descriptor_set_1.dstBinding = 1;
+    write_descriptor_set_1.dstSet = m_descriptor_set;
+    write_descriptor_set_1.pImageInfo = &image_info;
+    write_descriptor_set_1.pNext = nullptr;
+
+    std::array<VkWriteDescriptorSet, 2> descriptor_sets{};
+    descriptor_sets[0] = write_descriptor_set;
+    descriptor_sets[1] = write_descriptor_set_1;
+    vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 
     m_main_deletion_queue.add_to_queue([this]() {
 
@@ -320,9 +351,9 @@ void Engine::init_descriptors()
 void Engine::init_vertex_buffer()
 {
     std::vector<Vertex> vertices = {
-        {glm::vec3(0.0f, -0.5f, 0.0f)},
-        {glm::vec3(0.5f, 0.5f, 0.0f)},
-        {glm::vec3(-0.5f, 0.5f, 0.0f)},
+        {glm::vec3(0.0f, -0.5f, 0.0f), glm::vec2(0.0f, -0.5f)},
+        {glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(0.5f, 0.5f)},
+        {glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(-0.5f, 0.5f)},
     };
 
     const VkDeviceSize size = static_cast<VkDeviceSize>(vertices.size() * sizeof(Vertex));
@@ -477,24 +508,16 @@ void Engine::init_pipeline()
     assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    // shit for layout(binding)
-    VkVertexInputAttributeDescription vertex_input_attribute_description{};
-    vertex_input_attribute_description.binding = 0;
-    vertex_input_attribute_description.format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertex_input_attribute_description.offset = 0;
-    vertex_input_attribute_description.location = 0;
 
-    VkVertexInputBindingDescription binding_description{};
-    binding_description.binding = 0;
-    binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    binding_description.stride = sizeof(Vertex);
+    const auto& attribute_desc =  Vertex::attribute_description();
+    const auto& binding_description = Vertex::binding_description();
 
     VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info{};
     vertex_input_state_create_info.pNext = nullptr;
     vertex_input_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_state_create_info.pVertexAttributeDescriptions = &vertex_input_attribute_description;
+    vertex_input_state_create_info.pVertexAttributeDescriptions = attribute_desc.data();
     vertex_input_state_create_info.pVertexBindingDescriptions = &binding_description;
-    vertex_input_state_create_info.vertexAttributeDescriptionCount = 1;
+    vertex_input_state_create_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_desc.size());
     vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -565,7 +588,137 @@ void Engine::init_pipeline()
 }
 
 void Engine::init_texture() {
+    std::filesystem::path path = GetCurrentWorkingDirectoryPath();
+    std::string s_path;
+    s_path += path.string() + "/textures/container.jpg";
+    int width, height, channel;
+    stbi_uc* texture = stbi_load(s_path.c_str(), &width, &height, &channel, STBI_rgb_alpha);
+    if (texture == nullptr) {
+        throw std::runtime_error("texture are not loaded");
+    }
 
+    //stbi_image_free(texture);
+
+    VkDeviceSize image_size = width * height * 4;
+
+    const uint32_t queues[] = { m_transfer_queue.get_family_index(), m_queue_graphics_family_index };
+
+    VkImageCreateInfo image_create_info{};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.depth = 1;
+    image_create_info.extent.width = static_cast<uint32_t>(width);
+    image_create_info.extent.height = static_cast<uint32_t>(height);
+    image_create_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.queueFamilyIndexCount = 1;
+    image_create_info.pQueueFamilyIndices = &m_queue_graphics_family_index;
+    image_create_info.flags = 0;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+
+    VmaAllocationCreateInfo allocation_create_info{};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+
+    THROW_IF_ERROR(vmaCreateImage(m_vma_allocator, & image_create_info, &allocation_create_info, &m_texture.m_image, &m_texture.m_allocation, nullptr));
+
+    VkBufferCreateInfo staging_buffer_create_info{};
+    staging_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    staging_buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    staging_buffer_create_info.size = image_size;
+    staging_buffer_create_info.pNext = nullptr;
+    staging_buffer_create_info.pQueueFamilyIndices = queues;
+    staging_buffer_create_info.queueFamilyIndexCount = 2;
+    staging_buffer_create_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+
+    VmaAllocationCreateInfo staging_allocation_create_info{};
+    staging_allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    staging_allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocation staging_allocation = VK_NULL_HANDLE;
+    VkBuffer staging_buffer = VK_NULL_HANDLE;
+    void* data = nullptr;
+
+    THROW_IF_ERROR(vmaCreateBuffer(m_vma_allocator, &staging_buffer_create_info, &staging_allocation_create_info, &staging_buffer, &staging_allocation, nullptr));
+
+    THROW_IF_ERROR(vmaMapMemory(m_vma_allocator, staging_allocation, &data));
+    memcpy(data, texture, image_size);
+    vmaUnmapMemory(m_vma_allocator, staging_allocation);
+    stbi_image_free(texture);
+
+    m_transfer_queue.immediate_submit([=, this](VkCommandBuffer cmd) {
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+
+        region.imageExtent.depth = 1;
+        region.imageExtent.height = static_cast<uint32_t>(height);
+        region.imageExtent.width = static_cast<uint32_t>(width);
+        region.imageOffset = {0, 0, 0};
+
+        VkUtils::transition_image(cmd, m_texture.m_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        vkCmdCopyBufferToImage(cmd, staging_buffer, m_texture.m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        VkUtils::transition_image(cmd, m_texture.m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    });
+
+    VkImageViewCreateInfo image_view_create_info{};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_view_create_info.image = m_texture.m_image;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.pNext = nullptr;
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+
+    THROW_IF_ERROR(vkCreateImageView(m_device, &image_view_create_info, nullptr, &m_texture.m_image_view));
+
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(m_gpu, &properties);
+
+    VkSamplerCreateInfo sampler_create_info{};
+    sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_create_info.pNext = nullptr;
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+
+    sampler_create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_create_info.anisotropyEnable = VK_TRUE;
+    sampler_create_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+    sampler_create_info.compareEnable = VK_FALSE;
+    sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
+
+    // for mip map
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_create_info.mipLodBias = 0.0f;
+    sampler_create_info.minLod = 0.0f;
+    sampler_create_info.maxLod = 0.0f;
+
+    THROW_IF_ERROR(vkCreateSampler(m_device, &sampler_create_info, nullptr, &m_texture.m_sampler));
+
+    m_main_deletion_queue.add_to_queue([=, this]() {
+        vmaDestroyImage(m_vma_allocator, m_texture.m_image, m_texture.m_allocation);
+        vmaDestroyBuffer(m_vma_allocator, staging_buffer, staging_allocation);
+        vkDestroyImageView(m_device, m_texture.m_image_view, nullptr);
+        vkDestroySampler(m_device, m_texture.m_sampler, nullptr);
+    });
 
 
 }
@@ -579,9 +732,9 @@ void Engine::init() {
     init_sync_objects();
     create_swapchain(m_window_width, m_window_height);
     init_vertex_buffer();
+    init_texture();
     init_descriptors();
     init_pipeline();
-
 }
 
 
@@ -592,16 +745,17 @@ void Engine::update() {
         glfwPollEvents();
 
         m_timer.update();
-        m_object_constant.worldTransform = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(sin(m_timer.GetCurrentTime()), 1, 1));
-
+      //  m_object_constant.worldTransform = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(sin(m_timer.GetCurrentTime()), 1, 1));
+        m_object_constant.worldTransform = glm::mat4(1.0f);
         // update data ubo
 //        m_main_pass_ubo.view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 //        m_main_pass_ubo.proj =  glm::perspective(glm::radians(90.0f), (float)m_window_width / (float)m_window_height, 0.1f, 1000.0f);
 //        m_main_pass_ubo.proj[1][1] *= -1;
 
 //        m_main_pass_ubo.projView = m_main_pass_ubo.proj * m_main_pass_ubo.view;
-        MainPassUbo ubo;
-        ubo.proj =  glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(m_timer.GetCurrentTime(), 0, 1));
+        MainPassUbo ubo{};
+        ubo.proj = glm::mat4(1.0f);
+        //ubo.proj =  glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(m_timer.GetCurrentTime(), 0, 1));
         m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
 
         if (isResized == true)
@@ -677,7 +831,9 @@ void Engine::render()
     VkDeviceSize size[] = {0};
 
     vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
+
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1, &m_descriptor_set, 0, nullptr);
+
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
     vkCmdDraw(cmd, 3, 1, 0, 0);
 

@@ -5,7 +5,7 @@
 #include "material.h"
 #include  "utils.hpp"
 #include "FrameResources.h"
-
+#include "stb_image.h"
 
 struct RenderItem {
 
@@ -14,9 +14,17 @@ struct RenderItem {
 
     VkBuffer vertex_buffer = VK_NULL_HANDLE;
 
-
 };
 
+struct GPUImage {
+
+    VkImage m_image = VK_NULL_HANDLE;
+    VkImageView m_image_view = VK_NULL_HANDLE;
+    VkSampler m_sampler = VK_NULL_HANDLE;
+    VmaAllocation m_allocation = VK_NULL_HANDLE;
+    uint32_t width;
+    uint32_t height;
+};
 
 class Timer {
 
@@ -105,6 +113,8 @@ class Engine {
     VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
     VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
+    GPUImage m_texture;
+
 
 public:
 

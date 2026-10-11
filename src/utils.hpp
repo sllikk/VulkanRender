@@ -64,12 +64,44 @@ inline void THROW_IF_ERROR(const VkResult& result)
 }
 
 struct Vertex {
-
     glm::vec3 position;
-    //glm::vec4 color;
+    glm::vec2 texture;
 
+    static std::vector<VkVertexInputAttributeDescription> attribute_description() {
+
+        std::vector<VkVertexInputAttributeDescription> attribute_description{};
+        VkVertexInputAttributeDescription pos{};
+        VkVertexInputAttributeDescription texture{};
+
+        pos.binding = 0;
+        pos.format = VK_FORMAT_R32G32B32_SFLOAT;
+        pos.location = 0;
+        pos.offset = offsetof(Vertex, position);
+
+        texture.binding = 0;
+        texture.format = VK_FORMAT_R32G32_SFLOAT;
+        texture.location = 1;
+        texture.offset = offsetof(Vertex, texture);
+
+        attribute_description.emplace_back(pos);
+        attribute_description.emplace_back(texture);
+
+        return attribute_description;
+    }
+
+    static VkVertexInputBindingDescription binding_description() {
+
+        VkVertexInputBindingDescription binding_description{};
+        binding_description.binding = 0;
+        binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        binding_description.stride = sizeof(Vertex);
+
+        return binding_description;
+    };
 
 };
+
+
 
 //
 // This buffer uses for everything mem allocations
@@ -336,7 +368,7 @@ namespace VkUtils
         return  present_info_khr;
     }
 
-  inline  VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
+  inline VkImageSubresourceRange subresource_range(VkImageAspectFlags aspect_flags)
     {
         VkImageSubresourceRange subresource_range = {};
         subresource_range.aspectMask = aspect_flags;
@@ -348,7 +380,7 @@ namespace VkUtils
         return subresource_range;
     }
 
-  inline  void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
+  inline void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout currentLayout, const VkImageLayout newLayout)
     {
         VkImageMemoryBarrier2 image_memory_barrier = {};
         image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -362,7 +394,6 @@ namespace VkUtils
         image_memory_barrier.oldLayout = currentLayout;
 
         VkImageAspectFlags aspect_flags = {};
-
         if (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
         {
             aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -372,7 +403,7 @@ namespace VkUtils
             aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
         }
 
-        image_memory_barrier.subresourceRange = subresource_range(aspect_flags);
+      image_memory_barrier.subresourceRange = subresource_range(aspect_flags);
         image_memory_barrier.image = image;
         image_memory_barrier.pNext = nullptr;
 
@@ -380,7 +411,6 @@ namespace VkUtils
         VkDependencyInfo dependency_info = {};
         dependency_info.pNext = nullptr;
         dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-
         dependency_info.imageMemoryBarrierCount = 1;
         dependency_info.pImageMemoryBarriers = &image_memory_barrier;
 
