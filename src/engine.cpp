@@ -3,8 +3,9 @@
 #include "engine.h"
 #include "VkBootstrap.h"
 
-
 #include <iostream>
+#include "stb_image.h"
+
 
 Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view title)
     : m_window_title(title),  m_window_width(width), m_window_height(height)
@@ -162,6 +163,7 @@ void Engine::init_frame_resources()
 
 }
 
+
 void Engine::init_commands()
 {
     const auto& cmd_pool_create_info = VkUtils::command_pool_create_info(m_queue_graphics_family_index, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -220,6 +222,9 @@ void Engine::resize()
     vkDeviceWaitIdle(m_device);
 
     destroy_swapchain();
+    destroy_depth_buffer();
+    //vkDestroyImage(m_device, m_depth_buffer.m_image, nullptr);
+    //vkDestroyImageView(m_device, m_depth_buffer.m_image_view, nullptr);
 
     int h, w;
     glfwGetWindowSize(m_window, &w, &h);
@@ -233,7 +238,16 @@ void Engine::resize()
 
 
     create_swapchain(m_window_width, m_window_height);
+    create_depth_buffer(m_window_width, m_window_height);
     isResized = false;
+
+}
+
+
+void Engine::destroy_depth_buffer() const {
+
+    vmaDestroyImage(m_vma_allocator, m_depth_buffer.m_image, m_depth_buffer.m_allocation);
+    vkDestroyImageView(m_device, m_depth_buffer.m_image_view, nullptr);
 
 }
 
@@ -350,10 +364,62 @@ void Engine::init_descriptors() {
 
 void Engine::init_vertex_buffer()
 {
-    std::vector<Vertex> vertices = {
-        {glm::vec3(0.0f, -0.5f, 0.0f), glm::vec2(0.0f, -0.5f)},
-        {glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(0.5f, 0.5f)},
-        {glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(-0.5f, 0.5f)},
+
+    const std::vector<Vertex> vertices =
+    {
+        // Back face (-Z)
+        {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}}, // v0
+        {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}}, // v1
+        {{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}}, // v2
+
+        {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}}, // v0
+        {{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}}, // v2
+        {{ 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f}}, // v3
+
+        // Front face (+Z)
+        {{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+        {{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f}},
+
+        {{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+
+        // Right face (+X)
+        {{ 0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+
+        {{ 0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+
+        // Left face (-X)
+        {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}},
+        {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+        {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+
+        {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}},
+        {{-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+        {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+
+        // Top face (+Y)
+        {{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f}},
+        {{ 0.5f,  0.5f, -0.5f}, {1.0f, 0.0f}},
+
+        {{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f,  0.5f, -0.5f}, {1.0f, 0.0f}},
+        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+
+        // Bottom face (-Y)
+        {{-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}},
+        {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+
+        {{-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f}},
+        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f}},
+        {{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}}
     };
 
     const VkDeviceSize size = static_cast<VkDeviceSize>(vertices.size() * sizeof(Vertex));
@@ -461,14 +527,16 @@ void Engine::init_pipeline()
     rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     rendering_create_info.colorAttachmentCount = 1;
     rendering_create_info.pColorAttachmentFormats = &m_swapchain_format;
+    rendering_create_info.depthAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+    rendering_create_info.stencilAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
     // depth need there!!
 
-    VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY };
 
     VkPipelineDynamicStateCreateInfo dynamic_state_create_info{};
     dynamic_state_create_info.pNext = nullptr;
     dynamic_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_state_create_info.dynamicStateCount = 2;
+    dynamic_state_create_info.dynamicStateCount = 3;
     dynamic_state_create_info.pDynamicStates = dynamic_states;
 
     VkPipelineViewportStateCreateInfo viewport_state_create_info{};
@@ -501,7 +569,9 @@ void Engine::init_pipeline()
     depth_stencil_state_create_info.pNext = nullptr;
     depth_stencil_state_create_info.stencilTestEnable = false;
     depth_stencil_state_create_info.depthBoundsTestEnable = false;
-    depth_stencil_state_create_info.depthTestEnable = false;
+    depth_stencil_state_create_info.depthTestEnable = true;
+    depth_stencil_state_create_info.depthWriteEnable = true;
+    depth_stencil_state_create_info.depthCompareOp = VK_COMPARE_OP_LESS;
 
     VkPipelineInputAssemblyStateCreateInfo assembly_state_create_info{};
     assembly_state_create_info.pNext = nullptr;
@@ -534,9 +604,9 @@ void Engine::init_pipeline()
     rasterizer.depthClampEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.lineWidth = 1.0f;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f; // Optional
     rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -587,7 +657,9 @@ void Engine::init_pipeline()
     });
 }
 
-void Engine::init_texture() {
+
+void Engine::init_texture()
+{
     std::filesystem::path path = GetCurrentWorkingDirectoryPath();
     std::string s_path;
     s_path += path.string() + "/textures/container.jpg";
@@ -723,6 +795,51 @@ void Engine::init_texture() {
 
 }
 
+
+void Engine::create_depth_buffer(const uint32_t width, const uint32_t height)
+{
+    VkImageCreateInfo image_create_info{};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_D24_UNORM_S8_UINT;
+    image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_create_info.extent.width = width;
+    image_create_info.extent.height = height;
+    image_create_info.extent.depth = 1;
+    image_create_info.tiling =  VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.flags = 0;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.pNext = nullptr;
+
+    VmaAllocationCreateInfo allocation_create_info{};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    THROW_IF_ERROR(vmaCreateImage(m_vma_allocator, &image_create_info, &allocation_create_info, &m_depth_buffer.m_image, &m_depth_buffer.m_allocation, nullptr));
+
+    VkImageViewCreateInfo image_view_create_info{};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.format = VK_FORMAT_D24_UNORM_S8_UINT;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.image = m_depth_buffer.m_image;
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+    image_view_create_info.pNext = nullptr;
+
+    THROW_IF_ERROR(vkCreateImageView(m_device, &image_view_create_info, nullptr, &m_depth_buffer.m_image_view));
+
+    m_transfer_queue.immediate_submit([&](const VkCommandBuffer cmd)
+  {
+        VkUtils::transition_image(cmd, m_depth_buffer.m_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+  });
+
+
+}
+
 void Engine::init() {
 
     init_window();
@@ -731,6 +848,7 @@ void Engine::init() {
     init_commands();
     init_sync_objects();
     create_swapchain(m_window_width, m_window_height);
+    create_depth_buffer(m_window_width, m_window_height);
     init_vertex_buffer();
     init_texture();
     init_descriptors();
@@ -745,26 +863,14 @@ void Engine::update() {
         glfwPollEvents();
 
         m_timer.update();
-      //  m_object_constant.worldTransform = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(sin(m_timer.GetCurrentTime()), 1, 1));
-        m_object_constant.worldTransform = glm::mat4(1.0f);
-        // update data ubo
-//        m_main_pass_ubo.view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-//        m_main_pass_ubo.proj =  glm::perspective(glm::radians(90.0f), (float)m_window_width / (float)m_window_height, 0.1f, 1000.0f);
-//        m_main_pass_ubo.proj[1][1] *= -1;
-
-//        m_main_pass_ubo.projView = m_main_pass_ubo.proj * m_main_pass_ubo.view;
-        MainPassUbo ubo{};
-        ubo.proj = glm::mat4(1.0f);
-        //ubo.proj =  glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(m_timer.GetCurrentTime(), 0, 1));
-        m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
 
         if (isResized == true)
         {
             resize();
+
         }
 
         render();
-
 
     }
 }
@@ -792,14 +898,27 @@ void Engine::render()
 
     VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
+    VkClearDepthStencilValue depth_stencil_value{};
+    depth_stencil_value.depth = 1.0f;
+    depth_stencil_value.stencil = 0;
+
+    VkRenderingAttachmentInfo depth_attachment_info{};
+    depth_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depth_attachment_info.imageView = m_depth_buffer.m_image_view;
+    depth_attachment_info.clearValue.depthStencil = depth_stencil_value;
+    depth_attachment_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment_info.pNext = nullptr;
+
     VkRenderingAttachmentInfo rendering_attachment_info{};
-    rendering_attachment_info.pNext= nullptr;
     rendering_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    rendering_attachment_info.clearValue.color = {0.1, 0.2, 0.1, 1};
+    rendering_attachment_info.clearValue.color = {0.1, 0.1, 0.1, 0.2};
     rendering_attachment_info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     rendering_attachment_info.imageView = m_swapchain_images_image_views[m_swapchainIndex];
     rendering_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     rendering_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    rendering_attachment_info.pNext= nullptr;
 
     VkRenderingInfo renderingInfo = {
         .sType =  VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -807,7 +926,8 @@ void Engine::render()
         .layerCount = 1,
         .colorAttachmentCount = 1,
         .pColorAttachments = &rendering_attachment_info,
-        .pDepthAttachment = nullptr,
+        .pDepthAttachment = &depth_attachment_info,
+
     };
 
     vkCmdBeginRendering(cmd, &renderingInfo);
@@ -830,12 +950,27 @@ void Engine::render()
 
     VkDeviceSize size[] = {0};
 
-    vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
 
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1, &m_descriptor_set, 0, nullptr);
-
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    m_object_constant.worldTransform = glm::translate(glm::mat4(1), glm::vec3(0, 2, 0));
+    glm::mat4 rotate = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(1.0f, 0.0f, 1.0f));
+    // update data ubo
+
+    MainPassUbo ubo{};
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj =  glm::perspective(glm::radians(90.0f), float(m_window_width) / float(m_window_height), 0.1f, 1000.0f);
+    ubo.proj[1][1] *= -1;
+
+    ubo.projView = ubo.proj * ubo.view * m_object_constant.worldTransform * rotate;
+
+    m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
+
+    vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
+    vkCmdSetPrimitiveTopology(cmd, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdDraw(cmd, 36, 1, 0, 0);
+
 
     vkCmdEndRendering(cmd);
 
@@ -915,6 +1050,7 @@ void Engine::cleanup()
     }
 
     destroy_swapchain();
+    destroy_depth_buffer();
 
     m_main_deletion_queue.flush();
 
@@ -924,7 +1060,7 @@ void Engine::cleanup()
     vkDestroyInstance(m_instance, nullptr);
 
     glfwDestroyWindow(m_window);
-
+    glfwTerminate();
 
 }
 

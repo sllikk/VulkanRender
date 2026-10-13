@@ -44,8 +44,14 @@ FetchContent_Declare(
         GIT_TAG		   12.0.0
 )
 
+FetchContent_Declare(
+        fastgltf
+        GIT_REPOSITORY https://github.com/spnda/fastgltf.git
+        GIT_TAG		   v0.9.0
+)
 
-FetchContent_MakeAvailable(glfw glm fmt)
+
+FetchContent_MakeAvailable(glfw glm fmt fastgltf)
 
 add_subdirectory(third-party/vk-bootstrap)
 
@@ -81,3 +87,4 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDEB_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan)
 target_link_libraries(${PROJECT_NAME} PUBLIC glfw glm::glm fmt::fmt)
 target_link_libraries(${PROJECT_NAME} PUBLIC vk-bootstrap::vk-bootstrap)
+target_link_libraries(${PROJECT_NAME} PUBLIC fastgltf::fastgltf)

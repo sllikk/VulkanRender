@@ -3,6 +3,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -397,6 +398,9 @@ namespace VkUtils
         if (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
         {
             aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+            aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
         }
         else
         {

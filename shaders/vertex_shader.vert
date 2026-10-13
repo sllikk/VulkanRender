@@ -22,7 +22,7 @@ layout(set = 0, binding = 0, std140) uniform ubo {
 
 void main() {
 
-    gl_Position = MainPassUBO.proj * vec4(Position, 1.0f);
+    gl_Position = MainPassUBO.projView * vec4(Position, 1.0f);
     outTextureCoord = TextureCoord;
     FragColor = vec3(Position);
 }

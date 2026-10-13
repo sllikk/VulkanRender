@@ -5,7 +5,6 @@
 #include "material.h"
 #include  "utils.hpp"
 #include "FrameResources.h"
-#include "stb_image.h"
 
 struct RenderItem {
 
@@ -114,7 +113,7 @@ class Engine {
     VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
     VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
     GPUImage m_texture;
-
+    GPUImage m_depth_buffer;
 
 public:
 
@@ -137,8 +136,8 @@ public:
     void init_vertex_buffer();
     void init_pipeline();
     void init_texture();
-
-
+    void create_depth_buffer(const uint32_t width, const uint32_t height);
+    void destroy_depth_buffer() const;
 public:
 
     void init();
