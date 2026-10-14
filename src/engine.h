@@ -6,12 +6,22 @@
 #include  "utils.hpp"
 #include "FrameResources.h"
 
+struct Material {
+
+    glm::vec4 color;
+
+};
+
 struct RenderItem {
 
     uint32_t vertices_count = 0;
     uint32_t vertices_start = 0;
+    glm::mat4 transformation = glm::mat4(1.0f);
 
     VkBuffer vertex_buffer = VK_NULL_HANDLE;
+    VkBuffer index_buffer = VK_NULL_HANDLE;
+    Material material{};
+
 
 };
 
@@ -109,6 +119,8 @@ class Engine {
     Timer m_timer{};
     ObjectConstant m_object_constant{};
 
+    std::vector<std::unique_ptr<RenderItem>> m_draw_items{};
+
     VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
     VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
@@ -136,8 +148,10 @@ public:
     void init_vertex_buffer();
     void init_pipeline();
     void init_texture();
+    void init_draw_items();
     void create_depth_buffer(const uint32_t width, const uint32_t height);
     void destroy_depth_buffer() const;
+    void draw_items(const VkCommandBuffer& cmd);
 public:
 
     void init();

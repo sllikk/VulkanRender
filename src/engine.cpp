@@ -3,9 +3,8 @@
 #include "engine.h"
 #include "VkBootstrap.h"
 
-#include <iostream>
 #include "stb_image.h"
-
+#include <iostream>
 
 Engine::Engine(const uint32_t &width, const uint32_t &height, const std::string_view title)
     : m_window_title(title),  m_window_width(width), m_window_height(height)
@@ -251,6 +250,37 @@ void Engine::destroy_depth_buffer() const {
 
 }
 
+
+void Engine::draw_items(const VkCommandBuffer& cmd) {
+
+    for (size_t i = 0; i < m_draw_items.size(); ++i) {
+
+        VkDeviceSize size[]{0};
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1, &m_descriptor_set, 0, nullptr);
+
+        vkCmdBindVertexBuffers(cmd, 0, 1, &m_draw_items[i]->vertex_buffer, size);
+
+        glm::mat4 rotate = glm::rotate(glm::mat4(1.0f), m_timer.GetCurrentTime(), glm::vec3(0, 1, 1));
+        m_object_constant.worldTransform = m_draw_items[i]->transformation * rotate;
+
+        MainPassUbo ubo{};
+        ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj =  glm::perspective(glm::radians(90.0f), float(m_window_width) / float(m_window_height), 0.1f, 1000.0f);
+        ubo.proj[1][1] *= -1;
+
+        ubo.projView = ubo.proj * ubo.view;
+
+        m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
+
+        vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
+        vkCmdSetPrimitiveTopology(cmd, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+        vkCmdDraw(cmd, m_draw_items[i]->vertices_count, 1, 0, 0);
+
+    }
+
+}
 
 void Engine::destroy_swapchain() const
 {
@@ -796,6 +826,32 @@ void Engine::init_texture()
 }
 
 
+void Engine::init_draw_items() {
+
+    std::unique_ptr<RenderItem> cube_render_item = std::make_unique<RenderItem>();
+    cube_render_item->vertices_count = 36;
+    cube_render_item->vertex_buffer = m_triangle_item->vertex_buffer;
+    cube_render_item->transformation = glm::translate(glm::mat4(1.0f), glm::vec3(-1, 2, 0));
+    cube_render_item->material.color = glm::vec4(0.0f, 1.0f, 0.0f, 1);
+
+    std::unique_ptr<RenderItem> cube_render_item_1 = std::make_unique<RenderItem>();
+    cube_render_item_1->vertices_count = 36;
+    cube_render_item_1->vertex_buffer = m_triangle_item->vertex_buffer;
+    cube_render_item_1->transformation = glm::translate(glm::mat4(1.0f), glm::vec3(1, 2, 0));
+    cube_render_item_1->material.color = glm::vec4(1.0f, 2.0f, 0.0f, 1);
+
+    std::unique_ptr<RenderItem> cube_render_item_2 = std::make_unique<RenderItem>();
+    cube_render_item_2->vertices_count = 36;
+    cube_render_item_2->vertex_buffer = m_triangle_item->vertex_buffer;
+    cube_render_item_2->transformation = glm::translate(glm::mat4(1.0f), glm::vec3(-1, 4, 2));
+
+    m_draw_items.emplace_back(std::move(cube_render_item));
+    m_draw_items.emplace_back(std::move(cube_render_item_1));
+    m_draw_items.emplace_back(std::move(cube_render_item_2));
+
+}
+
+
 void Engine::create_depth_buffer(const uint32_t width, const uint32_t height)
 {
     VkImageCreateInfo image_create_info{};
@@ -853,6 +909,7 @@ void Engine::init() {
     init_texture();
     init_descriptors();
     init_pipeline();
+    init_draw_items();
 }
 
 
@@ -930,6 +987,8 @@ void Engine::render()
 
     };
 
+
+
     vkCmdBeginRendering(cmd, &renderingInfo);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
@@ -948,29 +1007,7 @@ void Engine::render()
     scissor.extent = {m_window_width, m_window_height};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    VkDeviceSize size[] = {0};
-
-
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1, &m_descriptor_set, 0, nullptr);
-    vkCmdBindVertexBuffers(cmd, 0, 1, &m_triangle_item->vertex_buffer, size);
-
-    m_object_constant.worldTransform = glm::translate(glm::mat4(1), glm::vec3(0, 2, 0));
-    glm::mat4 rotate = glm::rotate(glm::mat4(1), m_timer.GetCurrentTime(), glm::vec3(1.0f, 0.0f, 1.0f));
-    // update data ubo
-
-    MainPassUbo ubo{};
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj =  glm::perspective(glm::radians(90.0f), float(m_window_width) / float(m_window_height), 0.1f, 1000.0f);
-    ubo.proj[1][1] *= -1;
-
-    ubo.projView = ubo.proj * ubo.view * m_object_constant.worldTransform * rotate;
-
-    m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
-
-    vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
-    vkCmdSetPrimitiveTopology(cmd, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    vkCmdDraw(cmd, 36, 1, 0, 0);
-
+    draw_items(cmd);
 
     vkCmdEndRendering(cmd);
 
@@ -990,6 +1027,7 @@ void Engine::render()
     semaphore_submit_info_wait.deviceIndex = 0;
     semaphore_submit_info_wait.semaphore = m_get_frame_context_index().swapchain_semaphore;
     semaphore_submit_info_wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+
     semaphore_submit_info_wait.value = 0;
 
     VkSemaphoreSubmitInfo semaphore_submit_info_signal = {};
