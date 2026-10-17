@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PROJECT_SRC
-    "src/engine.h"
-    "src/engine.cpp"
+    "src/render.h"
+    "src/render.cpp"
     "src/VkBootstrap.h"
     "src/VkBootstrap.cpp"
     "src/VkBootstrapDispatch.h"
@@ -21,6 +21,12 @@ set(PROJECT_SRC
     "src/material.cpp"
     "src/stb_image.h"
     "src/stb_image_implementation.cpp"
+    "src/input.h"
+    "src/input.cpp"
+    "src/window.h"
+    "src/engine.h"
+    "src/engine.cpp"
+    "src/timer.h"
 )
 
 find_package(Vulkan REQUIRED)
