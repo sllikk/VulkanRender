@@ -8,10 +8,16 @@
 
 #include <iostream>
 
+
+
 Render::Render() {
 
   m_triangle_item = std::make_unique<RenderItem>();
+
+
 }
+
+
 
 void Render::init_vulkan()
 {
@@ -973,7 +979,6 @@ void Render::render(Timer& timer)
     }
     else
         speed_cam = 3.0f;
-
 
     if (glfwGetKey(m_window.get_window_ptr(), GLFW_KEY_W)) {
         position += glm::normalize(front) * timer.GetDeltaTime() * speed_cam;
