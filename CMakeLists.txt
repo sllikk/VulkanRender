@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PROJECT_SRC
-    "src/render.h"
-    "src/render.cpp"
+    "src/engine.h"
+    "src/engine.cpp"
     "src/VkBootstrap.h"
     "src/VkBootstrap.cpp"
     "src/VkBootstrapDispatch.h"
@@ -16,17 +16,7 @@ set(PROJECT_SRC
     "src/FrameResources.cpp"
     "src/pipeline_manager.h"
     "src/pipeline_manager.cpp"
-    "src/renderdoc_app.h"
-    "src/material.h"
-    "src/material.cpp"
-    "src/stb_image.h"
-    "src/stb_image_implementation.cpp"
-    "src/input.h"
-    "src/input.cpp"
-    "src/window.h"
-    "src/engine.h"
-    "src/engine.cpp"
-    "src/timer.h"
+        src/renderdoc_app.h
 )
 
 find_package(Vulkan REQUIRED)
@@ -50,14 +40,8 @@ FetchContent_Declare(
         GIT_TAG		   12.0.0
 )
 
-FetchContent_Declare(
-        fastgltf
-        GIT_REPOSITORY https://github.com/spnda/fastgltf.git
-        GIT_TAG		   v0.9.0
-)
 
-
-FetchContent_MakeAvailable(glfw glm fmt fastgltf)
+FetchContent_MakeAvailable(glfw glm fmt)
 
 add_subdirectory(third-party/vk-bootstrap)
 
@@ -93,4 +77,3 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDEB_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan)
 target_link_libraries(${PROJECT_NAME} PUBLIC glfw glm::glm fmt::fmt)
 target_link_libraries(${PROJECT_NAME} PUBLIC vk-bootstrap::vk-bootstrap)
-target_link_libraries(${PROJECT_NAME} PUBLIC fastgltf::fastgltf)
