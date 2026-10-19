@@ -28,6 +28,24 @@ set(PROJECT_SRC
     "src/pipeline_manager.cpp"
 )
 
+set(PROJECT_SRC_IMGUI
+    src/imgui.h
+    src/imconfig.h
+    src/imgui_internal.h
+    src/imgui.cpp
+    src/imgui_demo.cpp
+    src/imgui_draw.cpp
+    src/imgui_widgets.cpp
+    src/imgui_tables.cpp
+    src/imstb_truetype.h
+    src/imstb_textedit.h
+    src/imstb_rectpack.h
+    src/imgui_impl_vulkan.h
+    src/imgui_impl_vulkan.cpp
+    src/imgui_impl_glfw.h
+    src/imgui_impl_glfw.cpp
+)
+
 find_package(Vulkan REQUIRED)
 
 include(FetchContent)
@@ -54,7 +72,7 @@ FetchContent_MakeAvailable(glfw glm fmt)
 
 add_subdirectory(third-party/vk-bootstrap)
 
-add_executable(${PROJECT_NAME} ${PROJECT_SRC})
+add_executable(${PROJECT_NAME} ${PROJECT_SRC} ${PROJECT_SRC_IMGUI})
 
 set(GLSLC "${Vulkan_INCLUDE_DIR}/../Bin/glslc.exe")
 

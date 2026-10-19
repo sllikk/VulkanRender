@@ -32,7 +32,7 @@
 
 
 constexpr uint32_t FRAME_IN_FLIGHTS = 3;
-
+constexpr uint32_t DOUBLE_BUFFERING = 2;
 
 struct DeletionQueue {
 

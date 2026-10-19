@@ -64,16 +64,12 @@ void Render::init_vulkan()
     VkPhysicalDeviceVulkan11Features features1{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     features1.multiview = true;
 
-    VkPhysicalDeviceVulkan12Features features2{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    features2.timelineSemaphore = true;
-
     VkPhysicalDeviceVulkan13Features features3{.sType =  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features3.synchronization2 = true;
     features3.dynamicRendering = true;
 
     physical_device_selector.set_required_features(required_features);
     physical_device_selector.set_required_features_11(features1);
-    physical_device_selector.set_required_features_12(features2);
     physical_device_selector.set_required_features_13(features3);
 
     vkb::Result<vkb::PhysicalDevice> physical_device_selector_return = physical_device_selector.select();
@@ -187,6 +183,7 @@ void Render::create_swapchain(const uint32_t width, const uint32_t height)
     .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
     .set_desired_extent(width, height)
     .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+    .set_desired_min_image_count(DOUBLE_BUFFERING)
     .build().value();
 
     m_window.set_window_extent(swapchain.extent.width, swapchain.extent.height);
@@ -363,6 +360,85 @@ void Render::init_descriptors() {
 
 }
 
+void Render::init_descriptors_imgui() {
+
+    VkDescriptorPoolSize pool_sizes[] = {
+        { VK_DESCRIPTOR_TYPE_SAMPLER, 100 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 100 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 100 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 100 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 100 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 100 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 100 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 100 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 100 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
+    pool_info.pPoolSizes = pool_sizes;
+
+    THROW_IF_ERROR(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_descriptor_pool_imgui));
+
+    m_main_deletion_queue.add_to_queue([this]() {
+         vkDestroyDescriptorPool(m_device, m_descriptor_pool_imgui, nullptr);
+  });
+
+}
+
+
+void Render::init_imgui() {
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Setup Dear ImGui style
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsClassic();
+    //ImGui::StyleColorsLight();
+    style.FrameRounding = 3.0f;
+    style.GrabRounding = 3.0f;
+
+    // Setup scaling
+    //style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+    //style.FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplGlfw_InitForVulkan(m_window.get_window_ptr(), true);
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.ApiVersion = VK_API_VERSION_1_3;
+    init_info.Instance = m_instance;
+    init_info.PhysicalDevice = m_gpu;
+    init_info.Device = m_device;
+    init_info.QueueFamily = m_queue_graphics_family_index;
+    init_info.Queue = m_graphics_queue;
+    init_info.DescriptorPool = m_descriptor_pool_imgui;
+
+    init_info.UseDynamicRendering = true;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo = m_rendering_create_info;
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info);
+
+    m_main_deletion_queue.add_to_queue([this]() {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+
+    });
+
+}
+
 
 void Render::init_vertex_buffer()
 {
@@ -524,21 +600,21 @@ void Render::init_pipeline()
     fragment_shader_stage_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     /// FOR DYNAMIC RENDERING
-    VkPipelineRenderingCreateInfo rendering_create_info{};
-    rendering_create_info.pNext = nullptr;
-    rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    rendering_create_info.colorAttachmentCount = 1;
-    rendering_create_info.pColorAttachmentFormats = &m_swapchain_format;
-    rendering_create_info.depthAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
-    rendering_create_info.stencilAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+
+    m_rendering_create_info.pNext = nullptr;
+    m_rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    m_rendering_create_info.colorAttachmentCount = 1;
+    m_rendering_create_info.pColorAttachmentFormats = &m_swapchain_format;
+    m_rendering_create_info.depthAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+    m_rendering_create_info.stencilAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT;
     // depth need there!!
 
-    VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY };
+    VkDynamicState dynamic_states[] { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY};
 
     VkPipelineDynamicStateCreateInfo dynamic_state_create_info{};
     dynamic_state_create_info.pNext = nullptr;
     dynamic_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_state_create_info.dynamicStateCount = 3;
+    dynamic_state_create_info.dynamicStateCount = static_cast<uint32_t>(std::size(dynamic_states));
     dynamic_state_create_info.pDynamicStates = dynamic_states;
 
     VkPipelineViewportStateCreateInfo viewport_state_create_info{};
@@ -604,7 +680,7 @@ void Render::init_pipeline()
     VkPipelineRasterizationStateCreateInfo rasterizer{};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
@@ -632,7 +708,7 @@ void Render::init_pipeline()
     VkPipelineShaderStageCreateInfo stages[ ] = { vertex_shader_stage_create_info, fragment_shader_stage_create_info };
     VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{};
     graphics_pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    graphics_pipeline_create_info.pNext = &rendering_create_info;
+    graphics_pipeline_create_info.pNext = &m_rendering_create_info;
     graphics_pipeline_create_info.pStages = stages;
     graphics_pipeline_create_info.stageCount = 2;
     graphics_pipeline_create_info.layout = m_pipeline_layout;
@@ -644,7 +720,6 @@ void Render::init_pipeline()
     graphics_pipeline_create_info.pVertexInputState = &vertex_input_state_create_info;
     graphics_pipeline_create_info.pMultisampleState = &multisampling;
     graphics_pipeline_create_info.pRasterizationState = &rasterizer;
-    //graphics_pipeline_create_info.pTessellationState = nullptr;
 
     graphics_pipeline_create_info.renderPass = nullptr;
     graphics_pipeline_create_info.subpass = 0;
@@ -878,7 +953,9 @@ void Render::init() {
     init_vertex_buffer();
     init_texture();
     init_descriptors();
+    init_descriptors_imgui();
     init_pipeline();
+    init_imgui();
     init_draw_items();
 }
 
@@ -890,7 +967,22 @@ void Render::update(Timer& timer) {
         resize();
     }
 
+    // Start the Dear ImGui frame
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::ShowDemoWindow(&isDrawDemo);
+
+    //make imgui calculate internal draw structures
+    ImGui::Render();
+
+
     render(timer);
+
+    ImGui::EndFrame();
+
+
 }
 
 
@@ -908,13 +1000,16 @@ void Render::render(Timer& timer)
     }
 
     const VkCommandBuffer& cmd = m_get_frame_context_index().command_buffer;
+    const VkCommandPool& pool = m_get_frame_context_index().command_pool;
 
     THROW_IF_ERROR( vkResetCommandBuffer(cmd, 0));
+    THROW_IF_ERROR( vkResetCommandPool(m_device, pool, 0));
 
     const auto& cmd_begin_info = VkUtils::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
     THROW_IF_ERROR(vkBeginCommandBuffer(cmd, &cmd_begin_info));
 
     VkUtils::transition_image(cmd, m_swapchain_images[m_swapchainIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
 
     VkClearDepthStencilValue depth_stencil_value{};
     depth_stencil_value.depth = 1.0f;
@@ -949,10 +1044,11 @@ void Render::render(Timer& timer)
     };
 
 
-
     vkCmdBeginRendering(cmd, &renderingInfo);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
+
+    //some imgui UI to test
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -967,6 +1063,7 @@ void Render::render(Timer& timer)
     scissor.offset = {0, 0};
     scissor.extent = {.width = m_window.get_window_extent().m_window_width, .height = m_window.get_window_extent().m_window_height};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
+
 
     MainPassUbo ubo{};
 
@@ -1017,8 +1114,14 @@ void Render::render(Timer& timer)
 
     ubo.projView = ubo.proj * ubo.view;
 
+
+
     m_get_frame_context_index().m_main_pass_uniform_buffer->update(&ubo, sizeof(MainPassUbo));
+
+
     draw_items(timer, cmd);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
     vkCmdEndRendering(cmd);
 
@@ -1086,6 +1189,7 @@ void Render::render(Timer& timer)
 void Render::cleanup()
 {
     vkDeviceWaitIdle(m_device);
+
 
 
     for (int i = 0; i < FRAME_IN_FLIGHTS; i++)

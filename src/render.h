@@ -5,6 +5,9 @@
 #include "utils.hpp"
 #include "window.h"
 
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
+#include "imgui_impl_glfw.h"
 
 class Timer;
 struct Material {
@@ -77,6 +80,7 @@ class Render {
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
 
     bool isResized = false;
+    bool isDrawDemo = true;
 
     glm::vec3 position = {0, 0, 0, };
     float speed_cam = 3.0f;
@@ -90,8 +94,13 @@ class Render {
     VkDescriptorSet m_descriptor_set = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
     VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
-    GPUImage m_texture;
-    GPUImage m_depth_buffer;
+
+    VkDescriptorPool m_descriptor_pool_imgui = VK_NULL_HANDLE;
+
+    VkPipelineRenderingCreateInfo m_rendering_create_info{};
+
+    GPUImage m_texture{};
+    GPUImage m_depth_buffer{};
 
 public:
 
@@ -101,6 +110,8 @@ public:
 
 protected:
 
+    void init_imgui();
+    void init_descriptors_imgui();
 
     void init_vulkan();
     void init_frame_resources();
@@ -117,6 +128,7 @@ protected:
     void create_depth_buffer(const uint32_t width, const uint32_t height);
     void destroy_depth_buffer() const;
     void draw_items(Timer& timer, const VkCommandBuffer& cmd);
+
 public:
 
     void init();
