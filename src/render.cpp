@@ -10,7 +10,6 @@
 
 
 
-
 Render::Render() {
 
   m_triangle_item = std::make_unique<RenderItem>();
@@ -483,8 +482,8 @@ void Render::init_vertex_buffer()
 
 void Render::init_pipeline()
 {
-    auto fragment_shader = VkUtils::load_shaders("../compiled_shaders/fragment_shader.frag.spv");
-    auto vertex_shader = VkUtils::load_shaders("../compiled_shaders/vertex_shader.vert.spv");
+    auto fragment_shader = VkUtils::load_shaders("compiled_shaders/fragment_shader.frag.spv");
+    auto vertex_shader = VkUtils::load_shaders("compiled_shaders/vertex_shader.vert.spv");
 
     VkShaderModuleCreateInfo vertex_shader_module_info{};
     vertex_shader_module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -663,11 +662,11 @@ void Render::init_pipeline()
 
 void Render::init_texture()
 {
-    std::filesystem::path path = GetCurrentWorkingDirectoryPath();
-    std::string s_path;
-    s_path += path.string() + "/textures/container.jpg";
+    std::filesystem::path path = GetCurrentWorkingDirectoryPath() / "textures" / "container.jpg";
+
+    std::cout << path << std::endl;
     int width, height, channel;
-    stbi_uc* texture = stbi_load(s_path.c_str(), &width, &height, &channel, STBI_rgb_alpha);
+    stbi_uc* texture = stbi_load(path.string().c_str(), &width, &height, &channel, STBI_rgb_alpha);
     if (texture == nullptr) {
         throw std::runtime_error("texture are not loaded");
     }
