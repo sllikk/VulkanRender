@@ -7,7 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PROJECT_SRC
     "src/engine.h"
+    "src/render.h"
     "src/engine.cpp"
+    "src/render.cpp"
     "src/VkBootstrap.h"
     "src/VkBootstrap.cpp"
     "src/VkBootstrapDispatch.h"
@@ -15,8 +17,6 @@ set(PROJECT_SRC
     "src/FrameResources.h"
     "src/FrameResources.cpp"
     "src/pipeline_manager.h"
-    "src/pipeline_manager.cpp"
-        src/renderdoc_app.h
 )
 
 find_package(Vulkan REQUIRED)
