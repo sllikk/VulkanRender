@@ -10,6 +10,7 @@
 
 
 
+
 Render::Render() {
 
   m_triangle_item = std::make_unique<RenderItem>();
