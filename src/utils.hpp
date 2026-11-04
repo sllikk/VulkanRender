@@ -5,6 +5,9 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
+// for c style array instead std::size()
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]) )
+
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <glm/matrix.hpp>
@@ -30,15 +33,13 @@
 #include <iostream>
 #include <memory>
 
-
 constexpr uint32_t FRAME_IN_FLIGHTS = 3;
-constexpr uint32_t DOUBLE_BUFFERING = 2;
 
 struct DeletionQueue {
 
  std::vector<std::function<void()>> queue{};
 
-    void flush()  {
+    void flush() {
 
         for (auto it = queue.rbegin(); it != queue.rend(); ++it) {
             (*it)();
@@ -62,7 +63,19 @@ inline void THROW_IF_ERROR(const VkResult& result)
         std::cerr << string_VkResult(result) << std::endl;
         throw std::runtime_error(string_VkResult(result));
     }
+
 }
+
+
+template<typename T>
+struct VkRefPointer {
+
+
+
+};
+
+
+
 
 struct Vertex {
     glm::vec3 position;
@@ -349,9 +362,9 @@ namespace VkUtils
         info.pCommandBufferInfos = pCmdSubmit;
         info.pSignalSemaphoreInfos = pSignalSemaphores;
         info.pWaitSemaphoreInfos = pWaitSemaphores;
-        info.signalSemaphoreInfoCount = 1;
-        info.waitSemaphoreInfoCount = 1;
-        info.commandBufferInfoCount = 1;
+        info.signalSemaphoreInfoCount = pSignalSemaphores ? 1 : 0;
+        info.waitSemaphoreInfoCount = pWaitSemaphores ? 1 : 0;
+        info.commandBufferInfoCount = pCmdSubmit ? 1 : 0;
         info.flags = flags;
         return info;
     }

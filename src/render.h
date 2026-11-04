@@ -5,9 +5,7 @@
 #include "utils.hpp"
 #include "window.h"
 
-#include "imgui.h"
-#include "imgui_impl_vulkan.h"
-#include "imgui_impl_glfw.h"
+
 
 class Timer;
 struct Material {
@@ -108,7 +106,12 @@ public:
      Render& operator=(const  Render& other) = delete;
      Render();
 
-protected:
+    static Render& getInstance() {
+        static Render* render = new Render();
+        return* render;
+    }
+
+public:
 
     void init_imgui();
     void init_descriptors_imgui();

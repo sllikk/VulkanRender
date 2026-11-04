@@ -1,13 +1,20 @@
 #define VMA_IMPLEMENTATION
 
+#define IMGUI_SHOW_DEMO
+
 #include "VkBootstrap.h"
 #include "render.h"
 
 #include "stb_image.h"
 #include "timer.h"
 
-#include <iostream>
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
+#include "imgui_impl_glfw.h"
 
+
+#include <iostream>
+#include "settings.h"
 
 
 Render::Render() {
@@ -183,7 +190,6 @@ void Render::create_swapchain(const uint32_t width, const uint32_t height)
     .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
     .set_desired_extent(width, height)
     .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-    .set_desired_min_image_count(DOUBLE_BUFFERING)
     .build().value();
 
     m_window.set_window_extent(swapchain.extent.width, swapchain.extent.height);
@@ -211,10 +217,10 @@ void Render::resize()
 
     create_swapchain(m_window.get_window_extent().m_window_width, m_window.get_window_extent().m_window_height);
     create_depth_buffer(m_window.get_window_extent().m_window_width, m_window.get_window_extent().m_window_height);
-    isResized = false;
 
-    std::cout << m_window.get_window_extent().m_window_width << std::endl;
-    std::cout << m_window.get_window_extent().m_window_height << std::endl;
+    glfwSetWindowSizeCallback(m_window.get_window_ptr(), window_size_callback);
+
+    isResized = false;
 
 }
 
@@ -239,7 +245,6 @@ void Render::draw_items(Timer& timer,  const VkCommandBuffer& cmd) {
 
         glm::mat4 rotate = glm::rotate(glm::mat4(1.0f), timer.GetCurrentTime(), glm::vec3(0, 1, 1));
         m_object_constant.worldTransform = m_draw_items[i]->transformation;
-
 
 
         vkCmdPushConstants(cmd, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ObjectConstant), &m_object_constant);
@@ -402,14 +407,9 @@ void Render::init_imgui() {
 
     // Setup Dear ImGui style
     ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::StyleColorsClassic();
-    //ImGui::StyleColorsLight();
+    ImGui::StyleColorsLight();
     style.FrameRounding = 3.0f;
     style.GrabRounding = 3.0f;
-
-    // Setup scaling
-    //style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
-    //style.FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForVulkan(m_window.get_window_ptr(), true);
@@ -704,7 +704,6 @@ void Render::init_pipeline()
 
     THROW_IF_ERROR(vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_pipeline_layout));
 
-
     VkPipelineShaderStageCreateInfo stages[ ] = { vertex_shader_stage_create_info, fragment_shader_stage_create_info };
     VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{};
     graphics_pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -972,10 +971,9 @@ void Render::update(Timer& timer) {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::ShowDemoWindow(&isDrawDemo);
-
-    //make imgui calculate internal draw structures
-    ImGui::Render();
+#ifdef IMGUI_SHOW_DEMO
+    SettingUI::Draw(m_window);
+#endif
 
 
     render(timer);
@@ -1120,6 +1118,9 @@ void Render::render(Timer& timer)
 
 
     draw_items(timer, cmd);
+
+    //make imgui calculate internal draw structures
+    ImGui::Render();
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 

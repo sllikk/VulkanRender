@@ -3,12 +3,15 @@
 #include "window.h"
 #include "timer.h"
 #include "render.h"
+#include "settings.h"
+
 
 class Engine {
 
-  std::unique_ptr<Render> m_vulkan_render;
+  Render& m_vulkan_render  = Render::getInstance();
   Window& m_window = Window::getInstance();
   Timer& m_timer = Timer::getInstance();
+  Setting& m_setting = Setting::get_instance();
 
 public:
 

@@ -26,6 +26,22 @@ set(PROJECT_SRC
     "src/input.cpp"
     "src/stb_image_implementation.cpp"
     "src/pipeline_manager.cpp"
+    "src/settings.h"
+
+    "src/tiny_obj_loader.h"
+    "src/tiny_obj_loader.cc"
+    "src/device.h"
+    "src/swapchain.h"
+    "src/render_arch.h"
+    "src/resources.h"
+    "src/mesh.h"
+
+    "src/settings.cpp"
+    "src/device.cpp"
+    "src/swapchain.cpp"
+    "src/render_arch.cpp"
+    "src/resources.cpp"
+
 )
 
 set(PROJECT_SRC_IMGUI
@@ -62,13 +78,13 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-        fmt
-        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG		   12.0.0
+        simdjson
+        GIT_REPOSITORY  https://github.com/simdjson/simdjson.git
+        GIT_TAG v4.0.0
 )
 
 
-FetchContent_MakeAvailable(glfw glm fmt)
+FetchContent_MakeAvailable(glfw glm simdjson)
 
 add_subdirectory(third-party/vk-bootstrap)
 
@@ -102,5 +118,5 @@ add_dependencies(${PROJECT_NAME} build_shaders)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDEB_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan)
-target_link_libraries(${PROJECT_NAME} PUBLIC glfw glm::glm fmt::fmt)
+target_link_libraries(${PROJECT_NAME} PUBLIC glfw glm::glm simdjson)
 target_link_libraries(${PROJECT_NAME} PUBLIC vk-bootstrap::vk-bootstrap)
