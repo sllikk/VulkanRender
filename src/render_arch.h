@@ -13,6 +13,7 @@ class RenderEngine {
   std::array<std::unique_ptr<FrameInFlight>, FRAME_IN_FLIGHTS> m_frame_in_flights{};
   uint32_t frame_count = 0;
   uint32_t swap_chain_image_index = 0;
+
   FrameInFlight* m_current_frame_in_flight = nullptr;
 
   VkPipeline m_pipeline = nullptr;
@@ -25,7 +26,6 @@ class RenderEngine {
 
   VkViewport m_viewport = {};
   VkRect2D  m_scissor = {};
-
 
 public:
 

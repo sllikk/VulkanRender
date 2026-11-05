@@ -44,8 +44,8 @@ void RenderEngine::init() {
   m_vertex_buffer->create(vertices.data(), vertices.size());
   m_index_buffer->create(m_indices.data(), m_indices.size());
 
-
   init_pipeline();
+
 }
 
 
@@ -112,6 +112,7 @@ void RenderEngine::init_pipeline() {
 
 }
 
+
 void RenderEngine::update() {
 
   while (!m_window.is_closed())
@@ -176,23 +177,21 @@ void RenderEngine::render() {
 
   vkCmdBeginRendering(cmd, &rendering_info);
 
-  VkViewport viewport{};
-  viewport.width = static_cast<float>(m_window.get_window_extent().m_window_width);
-  viewport.height = static_cast<float>(m_window.get_window_extent().m_window_height);
-  viewport.maxDepth = 1.0f;
-  viewport.minDepth = 0;
-  viewport.x = 0;
-  viewport.y = 0;
+  m_viewport.width = static_cast<float>(m_window.get_window_extent().m_window_width);
+  m_viewport.height = static_cast<float>(m_window.get_window_extent().m_window_height);
+  m_viewport.maxDepth = 1.0f;
+  m_viewport.minDepth = 0;
+  m_viewport.x = 0;
+  m_viewport.y = 0;
 
-  vkCmdSetViewportWithCount(cmd, 1, &viewport);
+  vkCmdSetViewportWithCount(cmd, 1, &m_viewport);
 
-  VkRect2D scissor{};
-  scissor.extent.height = m_window.get_window_extent().m_window_height;
-  scissor.extent.width = m_window.get_window_extent().m_window_width;
-  scissor.offset.x = 0;
-  scissor.offset.y = 0;
+  m_scissor.extent.height = m_window.get_window_extent().m_window_height;
+  m_scissor.extent.width = m_window.get_window_extent().m_window_width;
+  m_scissor.offset.x = 0;
+  m_scissor.offset.y = 0;
 
-  vkCmdSetScissorWithCount(cmd, 1, &scissor);
+  vkCmdSetScissorWithCount(cmd, 1, &m_scissor);
 
   auto const& vertex = m_vertex_buffer->get_gpu_buffer();
   auto const& index = m_index_buffer->get_gpu_buffer();

@@ -184,7 +184,7 @@ void Render::init_sync_objects()
 void Render::create_swapchain(const uint32_t width, const uint32_t height)
 {
     vkb::SwapchainBuilder swapchain_builder {m_gpu, m_device, m_surface};
-    VkSurfaceFormatKHR const& surface_format_khr{.format = m_swapchain_format, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+    VkSurfaceFormatKHR surface_format_khr{.format = m_swapchain_format, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
 
     vkb::Swapchain swapchain = swapchain_builder.set_desired_format(surface_format_khr)
     .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
